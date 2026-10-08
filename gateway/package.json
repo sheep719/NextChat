@@ -1,0 +1,27 @@
+{
+  "name": "nextchat-gateway",
+  "version": "0.1.0",
+  "description": "Self-hosted LLM gateway: OpenAI-compatible entry with multi-provider model routing",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=18.17"
+  },
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "start": "tsx src/server.ts",
+    "token": "tsx scripts/issue-token.ts",
+    "probe": "tsx scripts/auth-probe.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "better-sqlite3": "^13.0.3",
+    "fastify": "^4.28.1"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^9.6.0",
+    "@types/node": "^20.11.30",
+    "tsx": "^4.16.0",
+    "typescript": "^5.2.2"
+  }
+}

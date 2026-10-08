@@ -1,0 +1,450 @@
+{
+  "info": {
+    "_postman_id": "a1f0c0de-0000-4000-8000-000000000001",
+    "name": "NextChat Gateway（用户 + 会话 + 聊天）",
+    "description": "导入 Postman 后按顺序执行：注册 → 登录 → 会话 → 聊天。\n集合变量：baseUrl / username / password / access_token / gateway_api_key / conversation_id。\n登录与注册请求会自动把 access_token 写入集合变量，后续请求直接用。",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://127.0.0.1:3600" },
+    { "key": "username", "value": "demo_user" },
+    { "key": "password", "value": "demo-pass-2026" },
+    { "key": "access_token", "value": "" },
+    { "key": "gateway_api_key", "value": "sk-gateway-local-2026" },
+    { "key": "conversation_id", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "1. 健康检查",
+      "item": [
+        {
+          "name": "GET /healthz（免鉴权）",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/healthz", "host": ["{{baseUrl}}"], "path": ["healthz"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', function () { pm.response.to.have.status(200); });",
+                  "var j = pm.response.json();",
+                  "pm.test('返回库信息', function () { pm.expect(j.db).to.have.property('users'); });",
+                  "console.log('sqlite', j.db.sqlite, 'users', j.db.users, 'chatRequiresUser', j.chatRequiresUser);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "2. 用户认证",
+      "item": [
+        {
+          "name": "注册 POST /api/auth/register",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{username}}\",\n  \"password\": \"{{password}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{baseUrl}}/api/auth/register", "host": ["{{baseUrl}}"], "path": ["api", "auth", "register"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 新建 或 409 已存在', function () {",
+                  "  pm.expect([201, 409]).to.include(pm.response.code);",
+                  "});",
+                  "if (pm.response.code === 201) {",
+                  "  var j = pm.response.json();",
+                  "  pm.collectionVariables.set('access_token', j.access_token);",
+                  "  console.log('注册成功 id=' + j.user.id + '，已写入 access_token');",
+                  "} else {",
+                  "  console.log('用户已存在，请执行登录请求取 token');",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "登录 POST /api/auth/login",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{username}}\",\n  \"password\": \"{{password}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{baseUrl}}/api/auth/login", "host": ["{{baseUrl}}"], "path": ["api", "auth", "login"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 登录成功', function () { pm.response.to.have.status(200); });",
+                  "var j = pm.response.json();",
+                  "pm.test('返回 access_token 与用户信息', function () {",
+                  "  pm.expect(j.access_token).to.be.a('string');",
+                  "  pm.expect(j.user.username).to.eql(pm.collectionVariables.get('username'));",
+                  "});",
+                  "pm.collectionVariables.set('access_token', j.access_token);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /api/auth/me（需登录）",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }],
+            "url": { "raw": "{{baseUrl}}/api/auth/me", "host": ["{{baseUrl}}"], "path": ["api", "auth", "me"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', function () { pm.response.to.have.status(200); });",
+                  "var j = pm.response.json();",
+                  "pm.test('kind=user', function () { pm.expect(j.token.kind).to.eql('user'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "登录失败（错误口令 → 401）",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{username}}\",\n  \"password\": \"definitely-wrong-password\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{baseUrl}}/api/auth/login", "host": ["{{baseUrl}}"], "path": ["api", "auth", "login"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('401 invalid_credentials', function () {",
+                  "  pm.response.to.have.status(401);",
+                  "  pm.expect(pm.response.json().error.code).to.eql('invalid_credentials');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "注册校验（弱口令 → 400）",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"weak_user\",\n  \"password\": \"123\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{baseUrl}}/api/auth/register", "host": ["{{baseUrl}}"], "path": ["api", "auth", "register"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400 invalid_input', function () {",
+                  "  pm.response.to.have.status(400);",
+                  "  pm.expect(pm.response.json().error.code).to.eql('invalid_input');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "3. 会话与消息",
+      "item": [
+        {
+          "name": "创建会话 POST /api/conversations",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Postman 会话\",\n  \"model\": \"qwen-plus\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{baseUrl}}/api/conversations", "host": ["{{baseUrl}}"], "path": ["api", "conversations"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 创建成功', function () { pm.response.to.have.status(201); });",
+                  "var j = pm.response.json();",
+                  "pm.collectionVariables.set('conversation_id', j.conversation.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "会话列表 GET /api/conversations",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }],
+            "url": { "raw": "{{baseUrl}}/api/conversations?limit=20", "host": ["{{baseUrl}}"], "path": ["api", "conversations"], "query": [{ "key": "limit", "value": "20" }] }
+          },
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('200', function () { pm.response.to.have.status(200); });"] } }
+          ]
+        },
+        {
+          "name": "添加消息 POST /api/conversations/:id/messages",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"role\": \"user\",\n  \"content\": \"你好，这是一条来自 Postman 的消息\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{baseUrl}}/api/conversations/{{conversation_id}}/messages", "host": ["{{baseUrl}}"], "path": ["api", "conversations", "{{conversation_id}}", "messages"] }
+          },
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('201', function () { pm.response.to.have.status(201); });"] } }
+          ]
+        },
+        {
+          "name": "会话详情 GET /api/conversations/:id",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }],
+            "url": { "raw": "{{baseUrl}}/api/conversations/{{conversation_id}}", "host": ["{{baseUrl}}"], "path": ["api", "conversations", "{{conversation_id}}"] }
+          },
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('200 且含消息', function () {", "  pm.response.to.have.status(200);", "  pm.expect(pm.response.json().messages.length).to.be.above(0);", "});"] } }
+          ]
+        },
+        {
+          "name": "删除会话 DELETE /api/conversations/:id",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }],
+            "url": { "raw": "{{baseUrl}}/api/conversations/{{conversation_id}}", "host": ["{{baseUrl}}"], "path": ["api", "conversations", "{{conversation_id}}"] }
+          },
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('200 已删除', function () {", "  pm.response.to.have.status(200);", "  pm.expect(pm.response.json().deleted).to.eql(true);", "});"] } }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "4. 模型与聊天",
+      "item": [
+        {
+          "name": "模型列表 GET /v1/models",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }],
+            "url": { "raw": "{{baseUrl}}/v1/models", "host": ["{{baseUrl}}"], "path": ["v1", "models"] }
+          },
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('200', function () { pm.response.to.have.status(200); });"] } }
+          ]
+        },
+        {
+          "name": "聊天（登录用户 · 非流式）",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"qwen-plus\",\n  \"stream\": false,\n  \"messages\": [{ \"role\": \"user\", \"content\": \"用一句话介绍你自己\" }],\n  \"max_tokens\": 64\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{baseUrl}}/v1/chat/completions", "host": ["{{baseUrl}}"], "path": ["v1", "chat", "completions"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 且命中阿里', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.headers.get('x-gateway-provider')).to.eql('alibaba');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "聊天（登录用户 · 流式 SSE）",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{access_token}}" },
+              { "key": "Accept", "value": "text/event-stream" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"qwen-plus\",\n  \"stream\": true,\n  \"messages\": [{ \"role\": \"user\", \"content\": \"说三个字\" }]\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{baseUrl}}/v1/chat/completions", "host": ["{{baseUrl}}"], "path": ["v1", "chat", "completions"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 + text/event-stream', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.headers.get('content-type')).to.include('event-stream');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "聊天（网关 API Key → 期望 403）",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{gateway_api_key}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"qwen-plus\",\n  \"messages\": [{ \"role\": \"user\", \"content\": \"hi\" }]\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{baseUrl}}/v1/chat/completions", "host": ["{{baseUrl}}"], "path": ["v1", "chat", "completions"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('403 user_auth_required（聊天必须登录）', function () {",
+                  "  pm.response.to.have.status(403);",
+                  "  pm.expect(pm.response.json().error.code).to.eql('user_auth_required');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "聊天（无凭证 → 期望 401）",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"qwen-plus\",\n  \"messages\": [{ \"role\": \"user\", \"content\": \"hi\" }]\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{baseUrl}}/v1/chat/completions", "host": ["{{baseUrl}}"], "path": ["v1", "chat", "completions"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('401 missing_credentials', function () {",
+                  "  pm.response.to.have.status(401);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "5. 网关服务端凭证",
+      "item": [
+        {
+          "name": "用 API Key 换服务端 JWT",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"apiKey\": \"{{gateway_api_key}}\",\n  \"clientId\": \"postman-client\",\n  \"ttlSec\": 600\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{baseUrl}}/v1/auth/token", "host": ["{{baseUrl}}"], "path": ["v1", "auth", "token"] }
+          },
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('200', function () { pm.response.to.have.status(200); });"] } }
+          ]
+        },
+        {
+          "name": "whoami GET /v1/auth/whoami",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{gateway_api_key}}" }],
+            "url": { "raw": "{{baseUrl}}/v1/auth/whoami", "host": ["{{baseUrl}}"], "path": ["v1", "auth", "whoami"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 且 kind=client', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.json().auth_type).to.eql('apikey');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

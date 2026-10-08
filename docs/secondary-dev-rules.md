@@ -368,3 +368,42 @@ chore/<杂项>       依赖、配置
   前端层同样使用 `--no-verify`（用户已确认）：手动跑完 eslint / prettier / tsc
   后绕开挂死的 lint-staged 运行器。
 - **待办**：按模型拆分、费用估算（需维护价格表）；用量配额/限流
+
+### C-010　项目收尾：容器化 + README + 提交历史整理（2026-10-08）
+
+- **等级**：L2（覆盖上游既有的 `Dockerfile` / `docker-compose.yml` / `.dockerignore`，
+  并在 `README.md` **顶部新增区块**、原文一字未删）
+- **内容**
+  - `Dockerfile` 改为多阶段单镜像：前端 `yarn build`（standalone）+ 网关 `npm ci`，
+    最终镜像由 `docker/start.sh` 同时拉起 web(3000) 与 gateway(3600)
+  - `docker/start.sh`：双进程托管、信号转发、任一退出即整体退出；
+    `JWT_SECRET` 缺失时自动生成并持久化到数据目录
+  - `.dockerignore` 排除任意层级 `.env`、`gateway/node_modules`、`*.db`
+  - `.gitattributes` 强制脚本 LF（否则 CRLF 进容器会 `bash\r` 报错）
+  - `docker-compose.yml` 改为构建本地镜像的单 service
+  - `README.md` 顶部加「二开版总览」：一键运行、环境变量表、
+    架构对比（mermaid 原版 vs 二开版 + 能力对比表）、改动清单、文档索引
+- **关键决策**（均经用户确认）
+  - **README 顶部加区块而非重写**：上游 README 有 483 行且每日自动同步，
+    只改开头一小段可把将来合并冲突压到最小
+  - **单容器双进程**而非两容器 compose：`docker run` 一条命令即可，不需要 compose；
+    compose 仅作为可选便利方式保留
+  - **不动提交历史**：现有 7 个提交已按「网关 / 前端 / 文档」分层，语义清晰；
+    本环境重写历史有 P-024 风险，改为打标签 `v0.2.0` + 在文档里固化说明
+- **新增文件**：`docker/start.sh`、`.gitattributes`
+- **改动文件**：`Dockerfile`、`docker-compose.yml`、`.dockerignore`、`README.md`、
+  `docs/secondary-dev-rules.md`、`docs/troubleshooting.md`、`gateway/README.md`
+- **验证**：本地 `yarn build` 产出 standalone，按容器目录布局起服务 `/login` 返回 200；
+  `bash -n` 语法通过；12 项不变量断言全过。**本机无 Docker，未执行 docker build/run**（P-039）
+- **踩坑**：P-035（必须 Node 22）、P-036（`HUSKY=0`）、P-037（`HOST=0.0.0.0`）、
+  P-038（CRLF → `.gitattributes`）、P-039（无 Docker 的替代验证）
+- **本次提交**
+
+  ```
+  d5450882  feat(docker): 单镜像同时托管前端与网关，支持一键 docker run
+  （紧随其后的 docs 提交即本条台账所在提交，不在此自引用 hash）
+  ```
+
+- **标签**：`v0.2.0`（对应"登录 + 云同步 + 用量统计 + 容器化"这一版）
+- **待办**：真机 `docker build` 验证（装 better-sqlite3、镜像体积、首次启动耗时）；
+  用量按模型拆分；`gpt-4o-mini` 的 provider 路由

@@ -34,6 +34,25 @@ cp .env.example .env   # 填入各 provider 的 key
 npm run dev            # tsx watch, http://127.0.0.1:3600
 ```
 
+### Docker（与前端一起起）
+
+仓库根目录的镜像已包含本网关，无需单独构建：
+
+```bash
+docker build -t nextchat-fork:0.2.0 .
+docker run -d -p 3000:3000 -p 3600:3600 -e DEEPSEEK_API_KEY=sk-xxx nextchat-fork:0.2.0
+```
+
+容器内差异（其余配置同 `.env.example`，一律用环境变量传）：
+
+| 变量 | 容器内默认 | 说明 |
+| --- | --- | --- |
+| `HOST` | `0.0.0.0` | **必须**改，默认 `127.0.0.1` 会让宿主连不上 |
+| `PORT` | `3600` | 由 `GATEWAY_PORT` 透传，勿与前端 `PORT` 混用 |
+| `DB_PATH` | `/gw/data/gateway.db` | 数据目录建议挂卷 |
+| `GATEWAY_CORS_ORIGINS` | `*` | 生产改为前端实际来源 |
+| `JWT_SECRET` | 自动生成并持久化 | 不设也能登录；生产务必显式设置 |
+
 ## 接口
 
 | 方法 | 路径 | 鉴权 | 说明 |

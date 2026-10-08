@@ -6,6 +6,10 @@
 
 <h1 align="center">NextChat</h1>
 
+> 🧩 **这是 NextChat 的二次开发版本**：在原版前端之外自建了后端网关，
+> 新增「登录鉴权 / 多端会话同步 / 用量统计」三块能力。
+> 原版说明原样保留在下方，二开部分请看 👉 [二开版总览](#-二开版总览)。
+
 English / [简体中文](./README_CN.md)
 
 <a href="https://trendshift.io/repositories/5973" target="_blank"><img src="https://trendshift.io/api/badge/repositories/5973" alt="ChatGPTNextWeb%2FChatGPT-Next-Web | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
@@ -34,6 +38,130 @@ English / [简体中文](./README_CN.md)
 [<img src="https://github.com/user-attachments/assets/903482d4-3e87-4134-9af1-f2588fa90659" height="50" width="" >](https://monica.im/?utm=nxcrp)
 
 </div>
+
+<!-- ===================================================================
+     以下为二开（fork）新增内容；原版 README 正文原样保留在下方，未做删改。
+     =================================================================== -->
+
+## 🧩 二开版总览
+
+> 本仓库是 [NextChat](https://github.com/ChatGPTNextWeb/NextChat) 的**二次开发版本**（fork： `sheep719/NextChat`）。
+> 在原版前端之外自建了一个后端网关，补上原版没有的三块能力：**登录鉴权 / 多端会话同步 / 用量统计**。
+>
+> 二开改动全部在 `dev-gateway` 分支，`main` 保持与上游一致（上游每日自动同步）。
+
+### 一键运行（Docker）
+
+```bash
+# 1) 构建镜像（约 5~10 分钟，取决于网络）
+docker build -t nextchat-fork:0.2.0 .
+
+# 2) 启动：一个容器同时跑前端(3000) + 网关(3600)
+docker run -d --name nextchat \
+  -p 3000:3000 -p 3600:3600 \
+  -e DEEPSEEK_API_KEY=sk-xxxxxx \
+  -v nextchat-data:/gw/data \
+  --restart unless-stopped \
+  nextchat-fork:0.2.0
+```
+
+打开 <http://localhost:3000> → 注册账号 → 即可对话。
+不想手敲命令也可以用 `docker compose up -d`（已提供 `docker-compose.yml`，数据落在 `./gateway/data`）。
+
+**不配模型密钥也能起来**：容器零配置可启动，登录、云同步、用量面板都能用，只是聊天会因上游无密钥而报错。
+
+| 环境变量 | 默认 | 说明 |
+| --- | --- | --- |
+| `DEEPSEEK_API_KEY` / `ALIBABA_API_KEY` / `ZHIPU_API_KEY` | 空 | 上游模型密钥，至少配一个才能对话 |
+| `JWT_SECRET` | 首次启动自动生成 | 登录令牌签名密钥；**生产务必显式设置**，并挂卷保存 |
+| `GATEWAY_CORS_ORIGINS` | `*` | 浏览器直连网关的跨域白名单；生产改为 `http://你的域名:3000` |
+| `REGISTRATION_ENABLED` | `true` | 是否开放注册（内网自用可保持开启） |
+| `CHAT_REQUIRE_USER` | `true` | 聊天接口是否只接受登录用户令牌 |
+| `USAGE_STREAM_OPTIONS` | `true` | 流式时注入 `stream_options` 拿真实 token；关掉则全部走估算 |
+| `WEB_PORT` / `GATEWAY_PORT` | `3000` / `3600` | 容器内监听端口（改了要同步改 `-p`） |
+| `DB_PATH` / `DATA_DIR` | `/gw/data/gateway.db` / `/gw/data` | SQLite 位置，建议挂卷 |
+
+### 架构对比：原版 vs 二开版
+
+```mermaid
+flowchart TB
+  subgraph A["原版 NextChat"]
+    direction TB
+    BA["浏览器"] -->|"模型请求"| NA["Next.js API Route<br/>/api/proxy"]
+    NA --> UP1["OpenAI / Azure / Gemini ..."]
+    BA -.->|"会话记录存本地"| IDB1[("浏览器 IndexedDB<br/>换浏览器即丢")]
+  end
+
+  subgraph B["二开版（本仓库）"]
+    direction TB
+    BB["浏览器"] --> WEB["Next.js 前端 :3000"]
+    BB -->|"登录 / 云同步 / 用量 / 聊天<br/>统一走网关（JWT）"| GW["自建网关 :3600<br/>Fastify + TypeScript + SQLite"]
+    GW --> UP2["多家 provider<br/>DeepSeek / 阿里百炼 / 智谱"]
+    GW --> DB[("SQLite<br/>users<br/>cloud_state<br/>usage_records")]
+  end
+```
+
+| 能力 | 原版 | 二开版 |
+| --- | --- | --- |
+| 模型接入 | 浏览器直连 / Next API Route 代理 | 自建网关统一转发，**按模型名路由**到不同 provider |
+| 鉴权 | 页面访问码 `CODE` | API Key + JWT(HS256) 双模式，聊天只认登录用户令牌 |
+| 用户体系 | 无 | 注册/登录（scrypt 口令哈希），用户数据隔离 |
+| 会话存储 | 浏览器本地 IndexedDB | 云端快照同步，**换浏览器/换设备能看到历史对话** |
+| 用量统计 | 无 | 每次调用记录 token（真实值优先、估算兜底），按天图表展示 |
+| 部署形态 | 单前端容器 | 单容器同时托管前端 + 网关，一条 `docker run` 起步 |
+
+### 改动清单
+
+| # | 改动 | 主要内容 | 关键文件 |
+| --- | --- | --- | --- |
+| 1 | 自建网关 + 统一鉴权 | Fastify 多 provider 路由转发、SSE 透传、API Key/JWT 鉴权，改造成 NextChat 自定义 endpoint | `gateway/src/*` |
+| 2 | 用户体系 | `users` 表、注册/登录接口、Postman 可直调 | `gateway/src/users.ts`、`gateway/postman/` |
+| 3 | 前端登录页 + 云端同步 | `/login` 路由、登录守卫、会话快照上云（乐观锁合并） | `app/store/auth.ts`、`app/utils/gateway-sync.ts` |
+| 4 | 用量统计 | `usage_records` 表、流式抓 usage、Recharts 按天面板 | `gateway/src/usage.ts`、`app/components/usage.tsx` |
+| 5 | 容器化 | 单镜像双进程 Dockerfile + 启动脚本 + compose | `Dockerfile`、`docker/start.sh` |
+
+对应提交（`defdcdb5..HEAD`，分层提交：网关 / 前端 / 文档 各自独立）：
+
+```
+9d8a22e7  feat(gateway): 自建多模型网关 + 统一鉴权 + 用户体系 + 云端同步端点
+3890071d  feat(frontend): 登录页与会话云端同步
+e6348521  docs: 云端同步文档、台账 C-008 与排障 P-026~P-032
+2ef92557  docs: 固化 C-008 提交与推送结果
+3a35bef7  feat(gateway): 用量统计——记录每次调用 token 并按天聚合
+7fb785f3  feat(frontend): 用量面板——Recharts 按天展示 token 与调用次数
+aab579a6  docs: 用量统计文档、台账 C-009 与排障 P-033~P-034
+d5450882  feat(docker): 单镜像同时托管前端与网关，支持一键 docker run
+```
+
+> 容器化之后的文档提交（README 二开总览、台账 C-010、排障 P-035~P-039）见 `git log`。
+> 整版打标签 `v0.2.0`。
+
+> 提交规范与完整台账见 [`docs/secondary-dev-rules.md`](./docs/secondary-dev-rules.md)；
+> 环境问题与解法见 [`docs/troubleshooting.md`](./docs/troubleshooting.md)。
+
+### 本地开发
+
+```bash
+yarn install          # 前端依赖
+yarn dev              # 前端 :3000
+
+cd gateway && npm install && npm run dev   # 网关 :3600（先复制 .env.example 为 .env）
+```
+
+### 更多文档
+
+| 文档 | 内容 |
+| --- | --- |
+| `docs/request-flow.md` | 原版请求链路精读（前端 → API Route → 模型） |
+| `docs/gateway-auth.md` | 网关鉴权设计与接入方式 |
+| `docs/gateway-user-auth.md` | 用户表/会话表设计与接口 |
+| `docs/frontend-cloud-sync.md` | 会话云端同步（整包快照方案） |
+| `docs/usage-stats.md` | 用量统计：token 来源、估算兜底、面板实现 |
+| `docs/secondary-dev-rules.md` | 二开规则、变更分层与改动台账 |
+| `docs/troubleshooting.md` | 环境问题与解法（本机特有许多坑） |
+| `gateway/README.md` | 网关端点速查 |
+
+---
 
 ## ❤️ Sponsor AI API
 

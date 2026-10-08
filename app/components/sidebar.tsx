@@ -12,6 +12,7 @@ import MaskIcon from "../icons/mask.svg";
 import McpIcon from "../icons/mcp.svg";
 import DragIcon from "../icons/drag.svg";
 import DiscoveryIcon from "../icons/discovery.svg";
+import UsageIcon from "../icons/usage.svg";
 
 import Locale from "../locales";
 
@@ -326,6 +327,15 @@ export function SideBar(props: { className?: string }) {
                   }
                 }}
               />
+            </div>
+            <div className={styles["sidebar-action"]}>
+              <Link to={Path.Usage}>
+                <IconButton
+                  aria={Locale.Usage.Title}
+                  icon={<UsageIcon />}
+                  shadow
+                />
+              </Link>
             </div>
             <div className={styles["sidebar-action"]}>
               <Link to={Path.Settings}>

@@ -54,6 +54,8 @@ export enum Path {
   Artifacts = "/artifacts",
   SearchChat = "/search-chat",
   McpMarket = "/mcp-market",
+  /** 自建网关的用量统计面板（改动 3） */
+  Usage = "/usage",
 }
 
 export enum ApiPath {

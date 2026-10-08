@@ -1,0 +1,95 @@
+.usage {
+  padding: 20px;
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.card {
+  padding: 14px 16px;
+  border-radius: 10px;
+  background-color: var(--white);
+  border: var(--border-in-light);
+  box-shadow: var(--card-shadow);
+
+  .card-title {
+    font-size: 12px;
+    color: var(--gray);
+    margin-bottom: 6px;
+  }
+
+  .card-value {
+    font-size: 22px;
+    font-weight: 600;
+    color: var(--black);
+    line-height: 1.2;
+  }
+
+  .card-sub {
+    font-size: 12px;
+    color: var(--gray);
+    margin-top: 4px;
+  }
+}
+
+.panel {
+  padding: 16px;
+  border-radius: 10px;
+  background-color: var(--white);
+  border: var(--border-in-light);
+  box-shadow: var(--card-shadow);
+  margin-bottom: 16px;
+}
+
+.panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+
+  .panel-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--black);
+  }
+}
+
+.chart {
+  width: 100%;
+  height: 280px;
+}
+
+.hint {
+  font-size: 12px;
+  color: var(--gray);
+  margin-top: 8px;
+}
+
+.empty {
+  padding: 40px 0;
+  text-align: center;
+  color: var(--gray);
+  font-size: 14px;
+}
+
+.error {
+  padding: 12px 0;
+  color: var(--primary);
+  font-size: 13px;
+}
+
+@media (max-width: 600px) {
+  .usage {
+    padding: 12px;
+  }
+
+  .chart {
+    height: 220px;
+  }
+}

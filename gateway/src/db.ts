@@ -71,6 +71,29 @@ CREATE TABLE IF NOT EXISTS cloud_state (
   updated_at INTEGER NOT NULL,
   PRIMARY KEY (user_id, state_key)
 );
+
+-- 用量记录：每次 /v1/chat/completions 调用落一行（无论成功失败）。
+-- user_id 可为空：网关 API Key（非登录用户）发起的调用记不到具体用户。
+-- estimated=1 表示 token 数是估算值（上游没返回 usage，按请求/输出内容推算）。
+CREATE TABLE IF NOT EXISTS usage_records (
+  id                INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id           INTEGER          REFERENCES users(id) ON DELETE CASCADE,
+  client_id         TEXT    NOT NULL DEFAULT '',
+  model             TEXT    NOT NULL DEFAULT '',
+  provider          TEXT    NOT NULL DEFAULT '',
+  prompt_tokens     INTEGER NOT NULL DEFAULT 0,
+  completion_tokens INTEGER NOT NULL DEFAULT 0,
+  total_tokens      INTEGER NOT NULL DEFAULT 0,
+  estimated         INTEGER NOT NULL DEFAULT 0,
+  stream            INTEGER NOT NULL DEFAULT 0,
+  status            INTEGER NOT NULL DEFAULT 0,
+  latency_ms        INTEGER NOT NULL DEFAULT 0,
+  created_at        INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_usage_user_time
+  ON usage_records (user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_usage_time
+  ON usage_records (created_at DESC);
 `;
 
 function resolveDbPath(): string {
@@ -129,6 +152,23 @@ export interface CloudStateRow {
   payload: string;
   version: number;
   updated_at: number;
+}
+
+/** 用量记录行 */
+export interface UsageRow {
+  id: number;
+  user_id: number | null;
+  client_id: string;
+  model: string;
+  provider: string;
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
+  estimated: number;
+  stream: number;
+  status: number;
+  latency_ms: number;
+  created_at: number;
 }
 
 /** 对外暴露的用户信息（永远不含 password_hash） */

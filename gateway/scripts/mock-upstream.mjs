@@ -34,10 +34,31 @@ const server = http.createServer(async (req, res) => {
         Connection: "keep-alive",
       });
       const chunks = ["你", "好", "，", "这", "是", "第", "二", "家", "上", "游"];
+      // 是否按 OpenAI 规范在最后一个分片里带 usage（用于验证网关的真实值抓取路径）
+      const withUsage = parsed.stream_options?.include_usage === true;
       let i = 0;
       const timer = setInterval(() => {
         if (i >= chunks.length) {
           clearInterval(timer);
+          if (withUsage) {
+            // 真实 provider 的做法：末尾补一个 usage 分片（choices 为空）
+            res.write(
+              "data: " +
+                JSON.stringify({
+                  id: "mockupstream",
+                  object: "chat.completion.chunk",
+                  created: Date.now(),
+                  model: parsed.model,
+                  choices: [],
+                  usage: {
+                    prompt_tokens: 7,
+                    completion_tokens: 11,
+                    total_tokens: 18,
+                  },
+                }) +
+                "\n\n",
+            );
+          }
           res.write("data: [DONE]\n\n");
           res.end();
           return;

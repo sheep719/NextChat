@@ -56,8 +56,20 @@ npm run dev            # tsx watch, http://127.0.0.1:3600
 | DELETE | `/api/sync/state` | 用户 | 删除快照 |
 | GET | `/api/sync/state/keys` | 用户 | 列出当前用户的快照 key 与体积/版本 |
 
+| GET | `/api/usage/daily?days=30` | 用户 | 按天聚合用量（本地时区，空日期补 0） |
+| GET | `/api/usage/summary` | 用户 | 今日 / 近 7 天 / 近 30 天 / 累计 四个口径 |
+| GET | `/api/usage/recent?limit=20` | 用户 | 最近原始记录（对账用） |
+
 > 用户体系与表设计见 `docs/gateway-user-auth.md`（SQLite：users / conversations / messages）。
 > 多端对话同步（整包快照方案）见 `docs/frontend-cloud-sync.md`。
+> 用量统计（token 记录 + 按天面板）见 `docs/usage-stats.md`。
+
+### 用量统计的 token 从哪来
+
+流式调用上游默认**不返回 usage**，所以转发时会自动注入
+`stream_options: { include_usage: true }`（`USAGE_STREAM_OPTIONS=false` 可关）。
+上游不认该字段返回 400 时**自动去掉重试一次**（可用性优先），这次调用改走估算。
+估算规则：CJK 1 字≈1 token、其余 4 字符≈1 token，并置 `estimated=1`——**只作参考，不是计费依据**。
 
 ### 快照同步的设计取舍
 

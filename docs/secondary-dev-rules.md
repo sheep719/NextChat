@@ -314,13 +314,19 @@ chore/<杂项>       依赖、配置
      `prettier --write`（与钩子相同的检查），只是绕开挂死的 lint-staged 运行器
   2. `git push --force-with-lease=dev-gateway:9f5db3f4…` 强推：本地历史因 P-024
      被迫重写（内容一致、hash 全变），远端是自己的 fork 功能分支、无协作者
-- **本次提交**（工作区重提后的新历史）
+- **本次提交与推送结果**（已用 GitHub API 核验）
 
   ```
   9d8a22e7  feat(gateway): 自建多模型网关 + 统一鉴权 + 用户体系 + 云端同步端点
   3890071d  feat(frontend): 登录页与会话云端同步
-  <docs>    docs: 云端同步文档、台账 C-008 与排障 P-026~P-032
+  e6348521  docs: 云端同步文档、台账 C-008 与排障 P-026~P-032
   ```
 
-  （docs 提交的 hash 见 `git log`，此处不再硬编码以免再次失同步）
+  远端 `dev-gateway` = `e6348521`，与本地一致；`main` 仍为 `defdcdb5` 未动。
+  因本地历史被迫重写，本次为强推：
+  `git push --force-with-lease=dev-gateway:acd46f1f… origin dev-gateway`
+- **强推踩坑**：lease 的期望值要填**远端实际值** `acd46f1f`，不是台账里写的 `9f5db3f4`
+  （C-007 之后还推过一次 docs 提交）。填错会被 `stale info` 拒绝。
+  核验远端一律走 `api.github.com/repos/sheep719/NextChat/branches`——
+  `git ls-remote` 会被本机代理拦成 `CONNECT tunnel failed 502`。
 - **待办**：多标签页实时同步；快照分片（当前上限 8MB）；补 `gpt-4o-mini` 等模型的 provider 路由

@@ -1,0 +1,10 @@
+# 容器内执行的脚本必须是 LF：Windows 检出时若转成 CRLF，
+# Linux 容器里会报 `#!/usr/bin/env: 'bash\r': No such file or directory`。
+*.sh text eol=lf
+docker/start.sh text eol=lf
+
+# 网关与前端源码统一 LF，避免跨平台 diff 噪音
+*.ts text eol=lf
+*.tsx text eol=lf
+*.mjs text eol=lf
+Dockerfile text eol=lf

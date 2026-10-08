@@ -330,3 +330,41 @@ chore/<杂项>       依赖、配置
   核验远端一律走 `api.github.com/repos/sheep719/NextChat/branches`——
   `git ls-remote` 会被本机代理拦成 `CONNECT tunnel failed 502`。
 - **待办**：多标签页实时同步；快照分片（当前上限 8MB）；补 `gpt-4o-mini` 等模型的 provider 路由
+
+### C-009　用量统计：记录 token + 按天图表面板（2026-10-08）
+
+- **等级**：L2（新增文件为主 + 少量既有文件改动）
+- **内容**
+  - 网关新增 `usage_records` 表与 `gateway/src/usage.ts`（记录 / 按天聚合 / 四口径汇总）
+  - `/v1/chat/completions` 转发链路记账：非流式解析 `usage`；流式注入
+    `stream_options.include_usage` 并用 Transform 边转发边解析
+  - 网关新增 `GET /api/usage/daily`、`/api/usage/summary`、`/api/usage/recent`
+  - 前端新增 `app/components/usage.tsx`（Recharts），侧边栏「用量」入口，`Path.Usage = "/usage"`
+  - 安装依赖 `recharts`（`package.json` + `yarn.lock`）
+- **关键决策**
+  - **真实 usage 优先、估算兜底**：注入 `stream_options.include_usage`（OpenAI 兼容标准开关）；
+    上游返回 400 且提示该字段时**自动去掉重试**；拿不到就按内容估算并置 `estimated=1`
+  - **估算规则**：CJK 1 字≈1 token、其余 4 字符≈1 token；请求侧按 messages、响应侧按流式正文累加
+  - **面板做在网关侧而非前端**：换设备也要连续，且前端拿不到上游真实 usage
+  - **Recharts（用户选）**：React 声明式、体积小；体积大的按需 `dynamic()` 加载
+  - **入口用 HashRouter 子页**：与设置页同级，不用新建 Next 路由、不重复做登录守卫
+- **新增文件**：`gateway/src/usage.ts`、`app/components/usage.tsx`、`app/components/usage.module.scss`、
+  `app/icons/usage.svg`、`docs/usage-stats.md`
+- **改动文件**：`gateway/src/db.ts`、`gateway/src/server.ts`、`gateway/src/config.ts`、
+  `gateway/scripts/mock-upstream.mjs`、`app/constant.ts`、`app/components/home.tsx`、
+  `app/components/sidebar.tsx`、`app/locales/{cn,en}.ts`、`package.json`、`yarn.lock`
+- **验证**：网关侧 7 项全过（真实 usage 两条路径 + 估算兜底 + 补零 + 汇总 + 隔离 + 401）；
+  前端 E2E 10/10（面板数值与网关 summary 完全一致）
+- **踩坑**：E2E 注入登录态不能用删 IndexedDB（被应用连接阻塞，evaluate 挂死，P-033）；
+  Recharts 3 的坐标轴类名与 2.x 不同、断言要改用整段文本（P-034）
+- **本次提交**
+
+  ```
+  3a35bef7  feat(gateway): 用量统计——记录每次调用 token 并按天聚合
+  7fb785f3  feat(frontend): 用量面板——Recharts 按天展示 token 与调用次数
+  <docs>    docs: 用量统计文档、台账 C-009 与排障 P-033~P-034
+  ```
+
+  前端层同样使用 `--no-verify`（用户已确认）：手动跑完 eslint / prettier / tsc
+  后绕开挂死的 lint-staged 运行器。
+- **待办**：按模型拆分、费用估算（需维护价格表）；用量配额/限流

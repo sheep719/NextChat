@@ -373,6 +373,26 @@
   浏览器要带 `--remote-debugging-port=9222 --headless=new --no-sandbox
   --proxy-bypass-list="localhost;127.0.0.1"`，否则本机代理会拦 localhost。
 
+### P-033　E2E 里清/写 IndexedDB 不能用 `deleteDatabase`
+
+- **现象**：想通过"删掉 IndexedDB 再往 localStorage 写登录态"来做 E2E 注入，
+  结果 `Runtime.evaluate` 挂死 90 秒超时；即便 `onblocked` 也 resolve，后续
+  `indexedDB.open` 依然排队阻塞，整个库卡在"删除待处理"状态。
+- **根因**：应用运行期间一直持有 IndexedDB 连接（zustand persist + idb-keyval），
+  `deleteDatabase` 会一直 blocked。
+- **解决**：改用 CDP 的 `Storage.clearDataForOrigin`（`storageTypes: "indexeddb,local_storage,..."`），
+  再用 `Page.addScriptToEvaluateOnNewDocument` 在**应用 JS 之前**写 localStorage——
+  此时 IndexedDB 为空，`getItem` 会回落到 localStorage，注入必然生效。
+- **另注**：persist 的 `getItem` 是 **IndexedDB 优先**，只写 localStorage 是无效的（P-028 同源知识）。
+
+### P-034　Recharts 3 的坐标轴类名与 2.x 不同
+
+- **现象**：E2E 里用 `.recharts-xAxis .recharts-cartesian-axis-tick-value` 取 X 轴刻度，
+  拿到空数组；`.recharts-xAxis` 本身也取不到。
+- **解决**：断言改用整段 `document.body.innerText` 判断（刻度文字在页面文本里），
+  例如"30 天窗口会出现 09-xx 刻度，切到 7 天后不会"。
+- **附带经验**：**柱子只渲染非零值**，所以"柱子数量 == 天数"这类断言本身就是错的。
+
 ## 七、速查表
 
 ### P-032　eslint 在 `app/constant.ts` 上崩溃（上游预置问题，与本地改动无关）
@@ -411,3 +431,5 @@
 | 侧边栏有历史但主区域空白 | 检查 `currentSessionIndex` 是否停在空会话（P-030） |
 | eslint 对 constant.ts 抛 `reading 'loc'` | 上游预置 bug（P-032），用上游原文件可复现；手动检查后 --no-verify |
 | git commit 卡在 "Preparing lint-staged..." | 本环境钩子挂死（P-024 复发根因），慢检查手动后台跑 |
+| E2E 注入登录态不生效 | persist 读 IndexedDB 优先；用 CDP `Storage.clearDataForOrigin` + 启动脚本（P-033） |
+| Recharts 断言取不到 X 轴刻度 | 3.x 类名变了，改用整段 innerText 判断（P-034） |

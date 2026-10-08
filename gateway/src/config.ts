@@ -63,6 +63,16 @@ export const UPSTREAM_TIMEOUT_MS = Number(
 );
 
 /**
+ * 流式时是否注入 `stream_options: { include_usage: true }`。
+ * 这是拿到**真实** token 数的开关；上游不支持会自动去掉重试（改走估算）。
+ * 关掉则全部走估算：USAGE_STREAM_OPTIONS=false
+ */
+export const USAGE_STREAM_OPTIONS = bool(
+  process.env.USAGE_STREAM_OPTIONS,
+  true,
+);
+
+/**
  * provider 注册表 —— 新增一家只需在此追加一项 + .env 加 key。
  */
 export const providers: ProviderConfig[] = [

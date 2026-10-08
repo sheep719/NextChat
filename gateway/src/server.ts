@@ -14,7 +14,7 @@
  * 未通过一律 401 / 403，未配置任何凭证时网关拒绝启动（fail-closed）。
  */
 import Fastify from "fastify";
-import { Readable } from "node:stream";
+import { Readable, Transform } from "node:stream";
 import {
   CHAT_REQUIRE_USER,
   CORS_ALLOWED_ORIGINS,
@@ -22,6 +22,7 @@ import {
   PORT,
   REGISTRATION_ENABLED,
   UPSTREAM_TIMEOUT_MS,
+  USAGE_STREAM_OPTIONS,
   listModels,
   providers,
   resolveProvider,
@@ -70,6 +71,80 @@ import {
   listConversations,
   listMessages,
 } from "./conversations.js";
+import {
+  dailyUsage,
+  estimatePromptTokens,
+  estimateTokens,
+  recentUsage,
+  recordUsage,
+  usageSummary,
+} from "./usage.js";
+
+/* ======================== 用量统计辅助 ======================== */
+
+/**
+ * 把上游 usage 归一成 {prompt, completion}；字段缺失返回 null。
+ * 不同 provider 字段名不同：OpenAI 系用 prompt_tokens/completion_tokens，
+ * 部分厂商用 input_tokens/output_tokens。
+ */
+function normalizeUsage(u: any): { prompt: number; completion: number } | null {
+  if (!u || typeof u !== "object") return null;
+  const prompt = Number(u.prompt_tokens ?? u.input_tokens ?? NaN);
+  const completion = Number(u.completion_tokens ?? u.output_tokens ?? NaN);
+  if (!Number.isFinite(prompt) && !Number.isFinite(completion)) return null;
+  return {
+    prompt: Number.isFinite(prompt) ? Math.max(0, prompt) : 0,
+    completion: Number.isFinite(completion) ? Math.max(0, completion) : 0,
+  };
+}
+
+/**
+ * 流式转发的"旁路解析器"：原样转发字节，同时**顺便**解析 SSE 里的
+ * usage 与增量正文。
+ *
+ * 为什么需要它：SSE 流式下上游默认不带 usage，前端拿不到、网关也记不到。
+ * 这里不改动字节流（只读取不改写），因此对客户端完全透明。
+ */
+function createUsageTap(onDone: (usage: any, text: string) => void): Transform {
+  let buf = "";
+  let text = "";
+  let usage: any = null;
+
+  return new Transform({
+    transform(chunk, _enc, cb) {
+      const s = Buffer.isBuffer(chunk)
+        ? chunk.toString("utf8")
+        : String(chunk);
+      buf += s;
+
+      // SSE：一行一个 `data: {...}`，空行分隔事件。只处理完整行，残留留在 buf 里。
+      let idx: number;
+      while ((idx = buf.indexOf("\n")) >= 0) {
+        const line = buf.slice(0, idx).trim();
+        buf = buf.slice(idx + 1);
+        if (!line.startsWith("data:")) continue;
+        const payload = line.slice(5).trim();
+        if (!payload || payload === "[DONE]") continue;
+        try {
+          const obj = JSON.parse(payload);
+          if (obj && typeof obj === "object" && obj.usage) usage = obj.usage;
+          const delta = obj?.choices?.[0]?.delta?.content;
+          if (typeof delta === "string") text += delta;
+          // 有些实现把整段文本放在 choices[0].text（非 chat 场景）
+          const alt = obj?.choices?.[0]?.text;
+          if (typeof alt === "string" && !delta) text += alt;
+        } catch {
+          // 非 JSON（如上游心跳注释），忽略
+        }
+      }
+      cb(null, chunk); // 原样转发，不做任何改写
+    },
+    flush(cb) {
+      onDone(usage, text);
+      cb();
+    },
+  });
+}
 
 declare module "fastify" {
   interface FastifyRequest {
@@ -530,6 +605,40 @@ app.get("/api/sync/state/keys", async (req, reply) => {
   reply.send({ items: listCloudState(req.auth!.userId!) });
 });
 
+/* ============================ 用量统计 ============================ */
+
+/**
+ * GET /api/usage/daily?days=30
+ * 按（本地时区）天聚合：输入/输出/合计 token、调用次数、估算条数。
+ * 没有记录的日期会补 0，前端直接画即可。
+ */
+app.get("/api/usage/daily", async (req, reply) => {
+  if (!requireUser(req, reply, "GET /api/usage/daily")) return;
+  const q = (req.query ?? {}) as { days?: string };
+  const days = Number(q.days ?? 30);
+  const safeDays = Number.isFinite(days) ? Math.min(Math.max(days, 1), 365) : 30;
+  reply.send({
+    days: safeDays,
+    items: dailyUsage(req.auth!.userId!, safeDays),
+  });
+});
+
+/** GET /api/usage/summary —— 今日 / 近 7 天 / 近 30 天 / 累计 四个口径 */
+app.get("/api/usage/summary", async (req, reply) => {
+  if (!requireUser(req, reply, "GET /api/usage/summary")) return;
+  reply.send(usageSummary(req.auth!.userId!));
+});
+
+/** GET /api/usage/recent?limit=20 —— 最近若干条原始记录（对账用） */
+app.get("/api/usage/recent", async (req, reply) => {
+  if (!requireUser(req, reply, "GET /api/usage/recent")) return;
+  const q = (req.query ?? {}) as { limit?: string };
+  const limit = Number(q.limit ?? 20);
+  reply.send({
+    items: recentUsage(req.auth!.userId!, Number.isFinite(limit) ? limit : 20),
+  });
+});
+
 /* ============================ 健康检查 ============================ */
 
 app.get("/healthz", async () => ({
@@ -732,6 +841,19 @@ app.post("/v1/chat/completions", async (req, reply) => {
   const upstreamUrl = `${provider.baseUrl.replace(/\/$/, "")}${provider.chatPath}`;
   const isStream = body.stream === true;
 
+  // 用量统计：拿不到真实 usage 时的兑底（按请求正文估算 prompt token）
+  const startedAt = Date.now();
+  const promptEstimate = estimatePromptTokens(
+    Array.isArray(body?.messages) ? (body.messages as unknown[]) : [],
+  );
+  const usageBase = {
+    userId: identity.userId ?? null,
+    clientId: identity.clientId,
+    model,
+    provider: provider.name,
+    stream: isStream,
+  };
+
   req.log.info(
     `[route] client=%s(%s) model=%s -> provider=%s stream=%s`,
     identity.clientId,
@@ -744,8 +866,18 @@ app.post("/v1/chat/completions", async (req, reply) => {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT_MS);
 
-  try {
-    const upstream = await fetch(upstreamUrl, {
+  /**
+   * 流式时注入 `stream_options: { include_usage: true }`——
+   * 这是 OpenAI 兼容协议里"让流式响应末尾带上 usage"的标准开关。
+   * 少数 provider 不认这个字段会返回 400，此时会自动去掉重试一次（见下）。
+   */
+  const wantUsageOption = isStream && USAGE_STREAM_OPTIONS;
+  const bodyWithUsage = wantUsageOption
+    ? { ...body, stream_options: { ...(body as any).stream_options, include_usage: true } }
+    : body;
+
+  const callUpstream = (payload: unknown) =>
+    fetch(upstreamUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -753,9 +885,29 @@ app.post("/v1/chat/completions", async (req, reply) => {
         // 用上游 provider 的真实 key 替换（网关凭证与上游 key 隔离）
         Authorization: `Bearer ${provider.apiKey}`,
       },
-      body: JSON.stringify(body),
+      body: JSON.stringify(payload),
       signal: controller.signal,
     });
+
+  try {
+    let upstream = await callUpstream(bodyWithUsage);
+
+    // 上游不认 stream_options（400）→ 去掉后重试一次，保证可用性优先于统计
+    if (wantUsageOption && upstream.status === 400) {
+      const peek = await upstream.text();
+      if (/stream_options/i.test(peek)) {
+        req.log.warn(
+          `[usage] ${provider.name} 不接受 stream_options，去掉后重试（usage 将走估算）`,
+        );
+        upstream = await callUpstream(body);
+      } else {
+        // 不是 stream_options 导致的 400：把已读到的正文重新包成 Response 交给后续逻辑
+        upstream = new Response(peek, {
+          status: 400,
+          headers: { "content-type": "application/json" },
+        });
+      }
+    }
 
     // 统一透传响应头（剔除干扰头）
     const headers = new Headers(upstream.headers);
@@ -781,13 +933,65 @@ app.post("/v1/chat/completions", async (req, reply) => {
     Object.assign(headerObj, req.cors ?? {});
 
     if (isStream && upstream.body) {
-      // SSE 流式：hijack 后用 raw 管道原样透传，避免框架对响应体二次处理
+      // SSE 流式：hijack 后用 raw 管道原样透传，避免框架对响应体二次处理。
+      // 中间插入 usageTap：只读不写，顺带把 usage / 正文抓出来记账。
       reply.hijack();
       reply.raw.writeHead(upstream.status, headerObj);
-      Readable.fromWeb(upstream.body as any).pipe(reply.raw);
+
+      let recorded = false;
+      const finish = (usage: any, text: string) => {
+        if (recorded) return;
+        recorded = true;
+        const real = normalizeUsage(usage);
+        recordUsage({
+          ...usageBase,
+          promptTokens: real?.prompt ?? promptEstimate,
+          completionTokens: real?.completion ?? estimateTokens(text),
+          estimated: !real,
+          status: upstream.status,
+          latencyMs: Date.now() - startedAt,
+        });
+      };
+
+      const tap = createUsageTap(finish);
+      const source = Readable.fromWeb(upstream.body as any);
+      source.pipe(tap).pipe(reply.raw);
+
+      // 客户端提前断开时也要记账（否则长对话一条都记不上）
+      const onEarlyClose = () => finish(null, "");
+      reply.raw.on("close", onEarlyClose);
+      tap.on("end", () => {
+        reply.raw.off("close", onEarlyClose);
+      });
     } else {
       // 非流式：JSON 整体转发（响应头同步透传）
       const json = await upstream.text();
+
+      let usage: any = null;
+      let completionText = "";
+      if (upstream.ok) {
+        try {
+          const parsed = JSON.parse(json);
+          usage = parsed?.usage ?? null;
+          completionText =
+            parsed?.choices?.[0]?.message?.content ??
+            parsed?.choices?.[0]?.text ??
+            "";
+        } catch {
+          // 非 JSON 响应（异常页/HTML）：按无 usage 处理
+        }
+      }
+      const real = normalizeUsage(usage);
+      recordUsage({
+        ...usageBase,
+        promptTokens: real?.prompt ?? (upstream.ok ? promptEstimate : 0),
+        completionTokens:
+          real?.completion ?? (upstream.ok ? estimateTokens(completionText) : 0),
+        estimated: !real,
+        status: upstream.status,
+        latencyMs: Date.now() - startedAt,
+      });
+
       reply.code(upstream.status);
       reply.headers(headerObj);
       reply.header("content-type", "application/json");
@@ -796,6 +1000,15 @@ app.post("/v1/chat/completions", async (req, reply) => {
   } catch (e: any) {
     req.log.error(`[upstream] ${provider.name} error: ${e?.message}`);
     const aborted = e?.name === "AbortError";
+    // 上游没响应 → 记一条失败记录（token 记 0：确实没消耗），便于对账"调用次数"
+    recordUsage({
+      ...usageBase,
+      promptTokens: 0,
+      completionTokens: 0,
+      estimated: true,
+      status: 0,
+      latencyMs: Date.now() - startedAt,
+    });
     reply.code(aborted ? 504 : 502).send({
       error: {
         message: aborted

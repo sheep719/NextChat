@@ -34,6 +34,8 @@ import {
 import { ModelConfigList } from "./model-config";
 
 import { IconButton } from "./button";
+import { useAuthStore } from "../store/auth";
+import { chatSyncer, useSyncStatus } from "../utils/gateway-sync";
 import {
   SubmitKey,
   useChatStore,
@@ -241,6 +243,50 @@ function UserPromptModal(props: { onClose?: () => void }) {
         />
       )}
     </div>
+  );
+}
+
+function AccountItems() {
+  const auth = useAuthStore();
+  const syncStatus = useSyncStatus();
+
+  const lastSyncText = syncStatus.lastSyncTime
+    ? new Date(syncStatus.lastSyncTime).toLocaleString()
+    : Locale.GatewayAuth.Never;
+
+  return (
+    <List>
+      <ListItem
+        title={Locale.GatewayAuth.LoggedInAs}
+        subTitle={auth.user?.username ?? "-"}
+      >
+        <IconButton
+          aria={Locale.GatewayAuth.Logout}
+          text={Locale.GatewayAuth.Logout}
+          type="danger"
+          onClick={async () => {
+            if (await showConfirm(Locale.GatewayAuth.LogoutConfirm)) {
+              useAuthStore.getState().logout();
+              chatSyncer.reset();
+              window.location.href = "/login";
+            }
+          }}
+        />
+      </ListItem>
+      <ListItem title={Locale.GatewayAuth.LastSync} subTitle={lastSyncText}>
+        <IconButton
+          aria={Locale.GatewayAuth.SyncNow}
+          text={Locale.GatewayAuth.SyncNow}
+          onClick={() => chatSyncer.pull()}
+        />
+      </ListItem>
+      {syncStatus.lastError ? (
+        <ListItem
+          title={Locale.GatewayAuth.SyncFailed}
+          subTitle={syncStatus.lastError}
+        />
+      ) : null}
+    </List>
   );
 }
 
@@ -1459,44 +1505,44 @@ export function Settings() {
     </>
   );
 
-  const ai302ConfigComponent = accessStore.provider === ServiceProvider["302.AI"] && (
+  const ai302ConfigComponent = accessStore.provider ===
+    ServiceProvider["302.AI"] && (
     <>
       <ListItem
-          title={Locale.Settings.Access.AI302.Endpoint.Title}
-          subTitle={
-            Locale.Settings.Access.AI302.Endpoint.SubTitle +
-            AI302.ExampleEndpoint
+        title={Locale.Settings.Access.AI302.Endpoint.Title}
+        subTitle={
+          Locale.Settings.Access.AI302.Endpoint.SubTitle + AI302.ExampleEndpoint
+        }
+      >
+        <input
+          aria-label={Locale.Settings.Access.AI302.Endpoint.Title}
+          type="text"
+          value={accessStore.ai302Url}
+          placeholder={AI302.ExampleEndpoint}
+          onChange={(e) =>
+            accessStore.update(
+              (access) => (access.ai302Url = e.currentTarget.value),
+            )
           }
-        >
-          <input
-            aria-label={Locale.Settings.Access.AI302.Endpoint.Title}
-            type="text"
-            value={accessStore.ai302Url}
-            placeholder={AI302.ExampleEndpoint}
-            onChange={(e) =>
-              accessStore.update(
-                (access) => (access.ai302Url = e.currentTarget.value),
-              )
-            }
-          ></input>
-        </ListItem>
-        <ListItem
-          title={Locale.Settings.Access.AI302.ApiKey.Title}
-          subTitle={Locale.Settings.Access.AI302.ApiKey.SubTitle}
-        >
-          <PasswordInput
-            aria-label={Locale.Settings.Access.AI302.ApiKey.Title}
-            value={accessStore.ai302ApiKey}
-            type="text"
-            placeholder={Locale.Settings.Access.AI302.ApiKey.Placeholder}
-            onChange={(e) => {
-              accessStore.update(
-                (access) => (access.ai302ApiKey = e.currentTarget.value),
-              );
-            }}
-          />
-        </ListItem>
-      </>
+        ></input>
+      </ListItem>
+      <ListItem
+        title={Locale.Settings.Access.AI302.ApiKey.Title}
+        subTitle={Locale.Settings.Access.AI302.ApiKey.SubTitle}
+      >
+        <PasswordInput
+          aria-label={Locale.Settings.Access.AI302.ApiKey.Title}
+          value={accessStore.ai302ApiKey}
+          type="text"
+          placeholder={Locale.Settings.Access.AI302.ApiKey.Placeholder}
+          onChange={(e) => {
+            accessStore.update(
+              (access) => (access.ai302ApiKey = e.currentTarget.value),
+            );
+          }}
+        />
+      </ListItem>
+    </>
   );
 
   return (
@@ -1951,6 +1997,8 @@ export function Settings() {
             }}
           />
         </List>
+
+        <AccountItems />
 
         <DangerItems />
       </div>

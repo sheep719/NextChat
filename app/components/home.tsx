@@ -28,6 +28,8 @@ import { AuthPage } from "./auth";
 import { getClientConfig } from "../config/client";
 import { type ClientApi, getClientApi } from "../client/api";
 import { useAccessStore } from "../store";
+import { useAuthStore } from "../store/auth";
+import { useCloudSync } from "../utils/gateway-sync";
 import clsx from "clsx";
 import { initializeMcpSystem, isMcpEnabled } from "../mcp/actions";
 
@@ -239,6 +241,12 @@ export function Home() {
   useLoadData();
   useHtmlLang();
 
+  // 登录门控：未登录跳 /login（auth store 走 IndexedDB，需等 hydration）
+  const authReady = useAuthStore((s) => s._hasHydrated);
+  const loggedIn = useAuthStore((s) => !!s.token);
+  // 登录后自动同步：进主页拉一次云端快照，之后会话变更去抖上传
+  useCloudSync(authReady && loggedIn);
+
   useEffect(() => {
     console.log("[Config] got config from build time", getClientConfig());
     useAccessStore.getState().fetch();
@@ -258,7 +266,17 @@ export function Home() {
     initMcp();
   }, []);
 
+  useEffect(() => {
+    if (authReady && !loggedIn) {
+      window.location.href = "/login";
+    }
+  }, [authReady, loggedIn]);
+
   if (!useHasHydrated()) {
+    return <Loading />;
+  }
+
+  if (!authReady || !loggedIn) {
     return <Loading />;
   }
 

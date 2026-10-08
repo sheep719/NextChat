@@ -431,5 +431,66 @@
 | 侧边栏有历史但主区域空白 | 检查 `currentSessionIndex` 是否停在空会话（P-030） |
 | eslint 对 constant.ts 抛 `reading 'loc'` | 上游预置 bug（P-032），用上游原文件可复现；手动检查后 --no-verify |
 | git commit 卡在 "Preparing lint-staged..." | 本环境钩子挂死（P-024 复发根因），慢检查手动后台跑 |
+| docker build 卡在装 better-sqlite3 | 基线镜像换 `node:22`（P-035） |
+| `yarn install` 在镜像里报 husky 错误 | 加 `ENV HUSKY=0`（P-036） |
+| 容器端口映射了却连不上网关 | 网关默认听 127.0.0.1，要 `HOST=0.0.0.0`（P-037） |
+| 容器报 `/usr/bin/env: 'bash\r'` | 脚本被转成 CRLF，`.gitattributes` 强制 LF（P-038） |
+
+## 八、容器化类（C-010 期间新增）
+
+### P-035　基线镜像必须是 Node 22，`better-sqlite3` 装不上 ★ 易踩
+
+- **现象**：用 `node:18-alpine` / `node:20-*` 构建网关时，`npm ci` 卡在
+  `better-sqlite3` 的编译上（下载不到预编译包就退化为 `node-gyp` 源码编译），
+  alpine 上还会因为 musl 缺预编译产物而直接失败。
+- **根因**：`better-sqlite3@13` 的 `package.json` 声明 `engines.node >= 22`，
+  预编译产物按 Node ABI 发布，低版本 Node 命中不到。
+- **解法**：全阶段统一 `node:22-bookworm-slim`（glibc + Node 22），
+  并在 `gw-deps` 阶段备好 `python3 make g++` 作为编译兜底。
+- **附带**：本机（Node 22.22.2）已验证 `yarn build`（Next 14.1 standalone）
+  与 `tsx src/server.ts` 均正常，说明 Node 22 对前端与网关都安全。
+
+### P-036　镜像里 `yarn install` 被 husky 钩子打断
+
+- **现象**：`yarn install` 报 husky 相关错误并中断。
+- **根因**：`package.json` 有 `"prepare": "husky install"`，而镜像里没有 `.git`
+  （`.dockerignore` 排除了），husky 找不到 `.git` 直接失败。
+- **解法**：构建阶段 `ENV HUSKY=0`（husky v8+ 读到该变量会跳过安装）。
+- **注意**：不要用 `--ignore-scripts` 绕——`tsx`/`esbuild` 等依赖的 postinstall
+  也会被跳过，后面 `yarn mask`（用 tsx 执行）会因为没有 esbuild 二进制而失败。
+
+### P-037　容器里网关"端口映射了却连不上" ★ 高危
+
+- **现象**：`docker run -p 3600:3600` 之后，宿主 `curl localhost:3600` 连接被拒。
+- **根因**：网关配置 `HOST` 默认 `127.0.0.1`，容器内只听回环地址，
+  宿主即使映射了端口也进不来。
+- **解法**：启动脚本里 `export HOST=${HOST:-0.0.0.0}`；前端同理用
+  `HOSTNAME=0.0.0.0`（Next standalone server 读这两个变量）。
+- **同类陷阱**：前端与网关**都**读 `PORT`，不能全局设一个值——
+  脚本里只给各自的子进程作用域覆盖（`PORT=$GATEWAY_PORT` / `PORT=$WEB_PORT`）。
+
+### P-038　启动脚本在 Windows 检出后变成 CRLF，容器内直接报错
+
+- **现象**：`docker run` 立刻退出，日志为
+  `/usr/bin/env: 'bash\r': No such file or directory`。
+- **根因**：仓库在 Windows 上检出时被 `core.autocrlf` 转成 CRLF，
+  `COPY` 进 Linux 容器后 shebang 行多了 `\r`。
+- **解法**：新增 `.gitattributes`，对 `*.sh` / `docker/start.sh` /
+  `Dockerfile` 声明 `text eol=lf`，强制工作区保持 LF。
+- **附带**：脚本里生成随机密钥**不要用 `head/base64/tr`**（本机 Windows bash
+  就没有这些命令），改用容器里必然存在的 node：
+  `node -e 'console.log(require("node:crypto").randomBytes(36).toString("base64url"))'`。
+
+### P-039　本机没有 Docker，如何尽量验证容器化改动
+
+- **约束**：本机未安装 Docker Desktop（`Get-Command docker` 为空），
+  **无法执行** `docker build` / `docker run`，交付属于静态自测。
+- **替代验证**（已做）：
+  1. 本地 `yarn build` 产出 standalone，用与容器相同的目录布局
+     （`server.js` + `.next/static` + `public`）起服务，`/login` 返回 200
+  2. `bash -n docker/start.sh` 语法通过；并在本机实际执行一遍脚本，
+     验证控制流（密钥分支、双进程启动、任一退出即整体退出 `wait -n`）
+  3. 用脚本对 Dockerfile / start.sh 做不变量断言（12 项全过）
+- **仍然需要真机确认的**：`npm ci` 装 better-sqlite3、镜像体积、首次启动耗时。
 | E2E 注入登录态不生效 | persist 读 IndexedDB 优先；用 CDP `Storage.clearDataForOrigin` + 启动脚本（P-033） |
 | Recharts 断言取不到 X 轴刻度 | 3.x 类名变了，改用整段 innerText 判断（P-034） |

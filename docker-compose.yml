@@ -1,38 +1,34 @@
 version: "3.9"
-services:
-  chatgpt-next-web:
-    profiles: [ "no-proxy" ]
-    container_name: chatgpt-next-web
-    image: yidadaa/chatgpt-next-web
-    ports:
-      - 3000:3000
-    environment:
-      - OPENAI_API_KEY=$OPENAI_API_KEY
-      - GOOGLE_API_KEY=$GOOGLE_API_KEY
-      - CODE=$CODE
-      - BASE_URL=$BASE_URL
-      - OPENAI_ORG_ID=$OPENAI_ORG_ID
-      - HIDE_USER_API_KEY=$HIDE_USER_API_KEY
-      - DISABLE_GPT4=$DISABLE_GPT4
-      - ENABLE_BALANCE_QUERY=$ENABLE_BALANCE_QUERY
-      - DISABLE_FAST_LINK=$DISABLE_FAST_LINK
-      - OPENAI_SB=$OPENAI_SB
 
-  chatgpt-next-web-proxy:
-    profiles: [ "proxy" ]
-    container_name: chatgpt-next-web-proxy
-    image: yidadaa/chatgpt-next-web
+# 二开版：单镜像同时跑「Next.js 前端(3000)」+「自建网关(3600)」。
+# 不想手敲 docker run 时用 `docker compose up -d`。
+# 说明：数据（SQLite + 自动生成的 JWT 密钥）落在 ./gateway/data，重建容器不丢。
+services:
+  nextchat:
+    build:
+      context: .
+      args:
+        # 前端里内联的网关地址；改成域名/其他端口时同步改这里
+        NEXT_PUBLIC_GATEWAY_URL: http://127.0.0.1:3600
+    image: nextchat-fork:0.2.0
+    container_name: nextchat
+    restart: unless-stopped
     ports:
-      - 3000:3000
+      - "3000:3000" # 前端
+      - "3600:3600" # 网关（登录/云同步/用量都走它）
     environment:
-      - OPENAI_API_KEY=$OPENAI_API_KEY
-      - GOOGLE_API_KEY=$GOOGLE_API_KEY
-      - CODE=$CODE
-      - PROXY_URL=$PROXY_URL
-      - BASE_URL=$BASE_URL
-      - OPENAI_ORG_ID=$OPENAI_ORG_ID
-      - HIDE_USER_API_KEY=$HIDE_USER_API_KEY
-      - DISABLE_GPT4=$DISABLE_GPT4
-      - ENABLE_BALANCE_QUERY=$ENABLE_BALANCE_QUERY
-      - DISABLE_FAST_LINK=$DISABLE_FAST_LINK
-      - OPENAI_SB=$OPENAI_SB
+      # ---- 上游模型密钥（至少配一个，否则能登录但无法对话）----
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
+      - ALIBABA_API_KEY=${ALIBABA_API_KEY:-}
+      - ZHIPU_API_KEY=${ZHIPU_API_KEY:-}
+      # ---- 网关 ----
+      - JWT_SECRET=${JWT_SECRET:-} # 留空则首次启动自动生成并持久化到数据卷
+      - GATEWAY_CORS_ORIGINS=${GATEWAY_CORS_ORIGINS:-*}
+      - REGISTRATION_ENABLED=${REGISTRATION_ENABLED:-true}
+      - CHAT_REQUIRE_USER=${CHAT_REQUIRE_USER:-true}
+      - USAGE_STREAM_OPTIONS=${USAGE_STREAM_OPTIONS:-true}
+      # ---- 端口（一般不用改）----
+      - WEB_PORT=3000
+      - GATEWAY_PORT=3600
+    volumes:
+      - ./gateway/data:/gw/data

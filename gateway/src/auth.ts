@@ -92,9 +92,9 @@ export const JWT_ALGS: string[] = (() => {
 export const JWT_DEFAULT_TTL_SEC = Number(
   process.env.JWT_DEFAULT_TTL_SEC || 3600,
 );
-/** 签发上限，防止下发永久令牌 */
+/** 签发上限，防止下发永久令牌（默认 8 天 > 用户登录令牌的 7 天，避免把 AC-USER-03 钳回去） */
 export const JWT_MAX_TTL_SEC = Number(
-  process.env.JWT_MAX_TTL_SEC || 12 * 3600,
+  process.env.JWT_MAX_TTL_SEC || 8 * 24 * 3600,
 );
 export const JWT_CLOCK_SKEW_SEC = Number(process.env.JWT_CLOCK_SKEW_SEC || 60);
 

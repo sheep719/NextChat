@@ -216,6 +216,7 @@ app.options("/*", async (req, reply) => {
 /** 免鉴权路径（注册/登录本身就是为了拿凭证，不能再要求凭证） */
 const PUBLIC_PATHS = new Set([
   "/healthz",
+  "/health",
   "/api/auth/register",
   "/api/auth/login",
 ]);
@@ -640,6 +641,10 @@ app.get("/api/usage/recent", async (req, reply) => {
 });
 
 /* ============================ 健康检查 ============================ */
+
+app.get("/health", async () => ({
+  status: "ok",
+}));
 
 app.get("/healthz", async () => ({
   status: "ok",

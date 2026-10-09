@@ -11,8 +11,10 @@ import crypto from "node:crypto";
 import { db, nowMs, toPublicUser, PublicUser, UserRow } from "./db.js";
 import { signJwt } from "./auth.js";
 
-/** 登录令牌默认有效期（秒） */
-export const USER_TOKEN_TTL_SEC = Number(process.env.USER_TOKEN_TTL_SEC || 7200);
+/** 登录令牌默认有效期（秒）——7 天，对齐验收标准 AC-USER-03 */
+export const USER_TOKEN_TTL_SEC = Number(
+  process.env.USER_TOKEN_TTL_SEC || 7 * 24 * 3600,
+);
 
 /** 用户令牌的 scope：可聊天、可看模型、可读写自己的会话 */
 export const USER_SCOPES = [

@@ -111,7 +111,9 @@ gateway/data
 # 构建上下文瘦身
 .git
 .github
-src-tauri
+# src-tauri/target 是 Rust 编译产物（体积大）必须排除；
+# 但 src-tauri/tauri.conf.json 是 app/config/build.ts 的编译期依赖，不能排。
+src-tauri/target
 test
 .next
 out

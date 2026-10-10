@@ -494,3 +494,39 @@
 - **仍然需要真机确认的**：`npm ci` 装 better-sqlite3、镜像体积、首次启动耗时。
 | E2E 注入登录态不生效 | persist 读 IndexedDB 优先；用 CDP `Storage.clearDataForOrigin` + 启动脚本（P-033） |
 | Recharts 断言取不到 X 轴刻度 | 3.x 类名变了，改用整段 innerText 判断（P-034） |
+
+### P-040　容器构建：node:22 镜像已预装 yarn，npm -g 安装报 EEXIST
+
+- **症状**：`RUN npm install -g yarn@1.22.19` 报
+  `npm error EEXIST: file already exists: /usr/local/bin/yarn`。
+- **根因**：`node:22-bookworm-slim` 自 2025 年起镜像内自带 corepack/yarn。
+- **修法**：`RUN command -v yarn >/dev/null 2>&1 || npm install -g yarn@1.22.19`。
+- **教训**：基础镜像的内置工具随版本演进，"装工具"类 RUN 要幂等。
+
+### P-041　容器构建：yarn install 卡网络重试直至失败（registry.yarnpkg.com 不可达）
+
+- **症状**：`yarn install --frozen-lockfile` 反复
+  `info There appears to be trouble with your network connection. Retrying...`，
+  最终 `Client network socket disconnected before secure TLS connection was established`。
+- **根因（两个叠加）**：
+  1. yarn 1.x **不读 http_proxy/https_proxy 环境变量**（apt-get 和 npm 认，yarn 不认），
+     所以 build-arg 传代理对它无效；
+  2. `--frozen-lockfile` 模式下 tarball 从 **yarn.lock 的 resolved URL** 下载，
+     `--registry` 参数只影响解析阶段。lock 里 765 个包写死
+     `https://registry.yarnpkg.com/...`（国内直连不可达），换 registry 参数救不了。
+- **修法**：构建时 sed 重写 lock 域名 + 指定镜像源：
+  `--build-arg NPM_REGISTRY=https://registry.npmmirror.com --build-arg REWRITE_LOCK_REGISTRY=1`
+  （Dockerfile 内实现，默认关闭）。
+- **DNS 污染佐证**：`auth.docker.io` 曾解析到 Facebook 的 IPv6 段
+  （`2a03:2880:...`）——遇"知名站点连不上"先 `nslookup` 看解析结果。
+
+### P-042　容器构建：Next build typecheck 报 Cannot find module 'better-sqlite3'
+
+- **症状**：容器内 `yarn build` 失败于
+  `./gateway/src/db.ts:13 Type error: Cannot find module 'better-sqlite3'`。
+- **根因**：根 `tsconfig.json` 的 `include: ["**/*.ts"]` 会扫到 `gateway/src`；
+  本地因 gateway/node_modules 存在而侥幸通过，容器里没有 root 级 better-sqlite3。
+- **修法**：根 tsconfig `exclude` 补 `gateway`（网关本有独立 tsconfig 与依赖树，
+  前端 typecheck 不该扫它）与 `src-tauri/target`。
+- **教训**：monorepo 多 tsconfig 时，根配置的 include/exclude 要显式圈界，
+  "本地能过"可能只是依赖巧合。

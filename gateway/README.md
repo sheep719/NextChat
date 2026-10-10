@@ -160,6 +160,17 @@ DEEPSEEK_API_KEY=mock-test-key npm run start        # 终端 B：网关把 deeps
 | 网关 key 缺失/错误 | 401 `missing_credentials` / `invalid_api_key` |
 | 注册/登录/会话/聊天绑定 | 见 `npm run probe`（39 项用例，全 PASS） |
 
+## 真机容器验证（2026-10-10，docker compose）
+
+| 检查项 | 结果 |
+|---|---|
+| 容器状态 | `Up (healthy)`，3000/3600 双端口映射 |
+| `GET /login`（前端经网关链路） | 200 |
+| `GET /health` | 200 `{"status":"ok"}` |
+| `GET /api/conversations`（无 token） | 401（鉴权生效） |
+
+> 构建走 npmmirror + lock 域名重写（国内网络必需），参数见根 README「一键运行」。
+
 自检脚本 `npm run probe` 覆盖：注册登录、会话与消息 CRUD、跨用户越权、聊天接口绑定登录用户、
 JWT 过期与篡改、scope 与模型白名单、CORS 预检、模拟 NextChat 跨域请求；
 结果写入 `scripts/auth-probe-result.txt`。

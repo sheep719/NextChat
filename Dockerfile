@@ -22,10 +22,25 @@ ENV NEXT_TELEMETRY_DISABLED=1
 
 WORKDIR /app
 
-RUN npm install -g yarn@1.22.19
+# node:22-bookworm-slim 自 2025 年起镜像内已预装 corepack/yarn；
+# 直接 npm install -g 会报 EEXIST（/usr/local/bin/yarn 已存在）。
+# 改为：存在即跳过，缺失才安装。
+RUN command -v yarn >/dev/null 2>&1 || npm install -g yarn@1.22.19
 
 COPY package.json yarn.lock ./
-RUN yarn install --frozen-lockfile --network-timeout 600000
+# NPM_REGISTRY 可在构建时覆盖为镜像源（如国内 https://registry.npmmirror.com）。
+# 注意两点（都是 yarn 1.x + --frozen-lockfile 的坑）：
+#   1. yarn 1.x 不读 http_proxy 环境变量，代理对它无效；
+#   2. frozen 模式下 tarball 从 yarn.lock 的 resolved URL 下载，--registry 参数
+#      只影响解析阶段。因此网络受限环境（如 registry.yarnpkg.com 不可达）必须
+#      同时把 lock 里的 resolved 域名重写到可达镜像源，否则 765 个包全部超时。
+# REWRITE_LOCK_REGISTRY=1 时启用重写（默认关，保持上游 lockfile 原语义）。
+ARG NPM_REGISTRY=https://registry.npmjs.org
+ARG REWRITE_LOCK_REGISTRY=0
+RUN if [ "$REWRITE_LOCK_REGISTRY" = "1" ]; then \
+      sed -i 's|https://registry.yarnpkg.com|'"${NPM_REGISTRY}"'|g' yarn.lock; \
+    fi \
+    && yarn install --frozen-lockfile --network-timeout 600000 --registry "${NPM_REGISTRY}"
 
 # ============================ 2. 前端构建 ============================
 FROM web-deps AS web-build

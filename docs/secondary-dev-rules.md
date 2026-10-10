@@ -407,3 +407,33 @@ chore/<杂项>       依赖、配置
 - **标签**：`v0.2.0`（对应"登录 + 云同步 + 用量统计 + 容器化"这一版）
 - **待办**：真机 `docker build` 验证（装 better-sqlite3、镜像体积、首次启动耗时）；
   用量按模型拆分；`gpt-4o-mini` 的 provider 路由
+
+### C-011　真机 Docker 验证 + 干净环境三处构建修复 + 演示截图归档（2026-10-10）
+
+- **等级**：L1（`.dockerignore`/`tsconfig.json` 配置修正）+ L2（Dockerfile 构建参数，默认关）
+- **背景**：本机 Docker Desktop 修复后（WSL3.0.1 MSI 安装），补齐验收 DOC-01（真机 compose
+  验证）与 USER-05（docs/demo/ 截图归档）。
+- **干净环境暴露的三处问题**（本地构建因环境巧合从未触发）：
+  1. `node:22-bookworm-slim` 2025 起预装 yarn → `npm install -g yarn@1.22.19` 报
+     `EEXIST /usr/local/bin/yarn`。改为 `command -v yarn || npm install -g`；
+  2. `.dockerignore` 整目录排除 `src-tauri` → `app/config/build.ts` 的编译期
+     `import tauri.conf.json` 失败。改为只排除 `src-tauri/target`；
+  3. 根 `tsconfig.json` 的 `include **/*.ts` 扫到 `gateway/src`（独立依赖树，
+     better-sqlite3 不在 root node_modules）→ 容器内 typecheck 报
+     `Cannot find module 'better-sqlite3'`。exclude 补 `gateway`、`src-tauri/target`。
+- **网络受限构建方案**（Dockerfile 新增 ARG，默认关闭不动上游语义）：
+  `--build-arg NPM_REGISTRY=https://registry.npmmirror.com --build-arg REWRITE_LOCK_REGISTRY=1`。
+  根因：yarn 1.x `--frozen-lockfile` 从 lock 的 `resolved` URL 下载 tarball，
+  `--registry` 只管解析；lock 里 765 个包指向 registry.yarnpkg.com（国内不可达），
+  必须 sed 重写域名。yarn 1.x 不读 http_proxy 环境变量（apt/npm 认，yarn 不认）。
+- **真机验证数据**：
+  - 构建耗时约 22 分钟（走 npmmirror；含 apt 编译链 73MB + yarn 1100 包 + Next build）
+  - `docker compose up -d` → 容器 healthy（3000/3600 双端口）
+  - `:3000/login` = 200；`:3600/health` = 200 `{"status":"ok"}`；
+    `/api/conversations` 无 token = 401
+- **截图**：`docs/demo/`（Edge CDP 无头自动化：01 登录 / 02 对话 / 03 跨端历史 /
+  04 用量面板），脚本 `D:\Doctor\demo-shots.mjs`（本机，不入库）
+- **本次提交**：
+  - `0795574a` fix(docker) / `1b7ab203` fix(build) / `c3126c70` docs(demo) /
+    `4d33b901` docs(acceptance)
+- **待办**：DOC-04 提交数补量（本日 +5）；INT 三项第 4 周前

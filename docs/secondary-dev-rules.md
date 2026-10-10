@@ -437,3 +437,23 @@ chore/<杂项>       依赖、配置
   - `0795574a` fix(docker) / `1b7ab203` fix(build) / `c3126c70` docs(demo) /
     `4d33b901` docs(acceptance)
 - **待办**：DOC-04 提交数补量（本日 +5）；INT 三项第 4 周前
+
+### C-012　DEVIATION 收敛：错误体/统计路径/前端路由对齐标准字面（2026-10-10）
+
+- **等级**：L2（网关 401 错误体格式分支）+ L0（纯新增：别名路由、/stats 页）
+- **动机**：验收三项 DEVIATION（GW-03/STAT-02/STAT-03）可在不动主语义的前提下对齐标准字面格式。
+- **改动**：
+  1. `unauthorized()` 401 分支返回 `{"error":"unauthorized","message":...}`（error 为字符串）；
+     403 保持 OpenAI 对象。前端解析链 `json?.error?.message || json?.message` 两格式都兼容
+     （error 为字符串时前者 undefined、回退后者）——零前端改动。
+  2. `GET /api/stats/usage` 别名（handler 与 `/api/usage/daily` 同源复制，不抽象公共函数，
+     保持各自可读性；两处代码量小）。
+  3. `app/stats/page.tsx`：Next 服务端 `redirect("/#usage")`，登录守卫在 HashRouter 挂载前
+     已生效，语义与访问 / 一致。
+- **验证**（真机容器 + 无头浏览器）：
+  - 401 两例（无 header / 篡改 token）均返回标准字面错误体；
+  - `/api/stats/usage` 无 token 401、带 token 返回 days=7 聚合；
+  - `/stats` 未登录 → /login；登录后稳定落 `/#usage` 且 Recharts 渲染（截图 05 归档）。
+- **仍为 DEVIATION 的三项及理由**：GW-01（目录/端口为开发期选型，改名破坏已验证记录）、
+  USER-02（scrypt 安全等价、迁移需动存量哈希）、DOC-04（历史提交无 scope，rebase 风险大）。
+- **本次提交**：`b8a73718` feat(gateway) / `a1a3994f` feat(frontend) / `692c3deb` docs(acceptance)

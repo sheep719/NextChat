@@ -56,6 +56,12 @@ English / [简体中文](./README_CN.md)
 # 1) 构建镜像（约 5~10 分钟，取决于网络）
 docker build -t nextchat-fork:0.2.0 .
 
+# 国内/网络受限环境：走 npmmirror 镜像源并重写 lock 域名（否则 yarn 下载会超时，见 docs/troubleshooting.md P-041）
+docker build \
+  --build-arg NPM_REGISTRY=https://registry.npmmirror.com \
+  --build-arg REWRITE_LOCK_REGISTRY=1 \
+  -t nextchat-fork:0.2.0 .
+
 # 2) 启动：一个容器同时跑前端(3000) + 网关(3600)
 docker run -d --name nextchat \
   -p 3000:3000 -p 3600:3600 \
@@ -67,6 +73,13 @@ docker run -d --name nextchat \
 
 打开 <http://localhost:3000> → 注册账号 → 即可对话。
 不想手敲命令也可以用 `docker compose up -d`（已提供 `docker-compose.yml`，数据落在 `./gateway/data`）。
+
+**启动后自检**（两条验证命令）：
+
+```bash
+curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:3000/login   # 期望 200
+curl -s http://127.0.0.1:3600/health                                   # 期望 {"status":"ok"}
+```
 
 **不配模型密钥也能起来**：容器零配置可启动，登录、云同步、用量面板都能用，只是聊天会因上游无密钥而报错。
 

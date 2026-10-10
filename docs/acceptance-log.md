@@ -81,7 +81,7 @@ providers:
 [gateway] POST /v1/chat/completions 200 provider=deepseek
 ```
 
-### AC-GW-03 统一鉴权 — **DEVIATION**（401 行为 PASS，错误体格式不同）
+### AC-GW-03 统一鉴权 — **PASS**（2026-10-10 错误体对齐标准字面格式）
 
 ```
 $ curl -s -o /dev/null -w "%{http_code}" -X POST http://127.0.0.1:3600/v1/chat/completions \
@@ -97,8 +97,17 @@ $ curl -s …  # 错误响应体
 ```
 
 - 无 Header → 401 ✅；篡改 token → 401 ✅；`GATEWAY_API_KEYS` 从环境变量读取 ✅（`.env.example` 有示例）。
-- 标准要求错误体 `{"error":"unauthorized"}`；实现是 OpenAI 风格 `{"error":{...}}`（与上游
-  NextChat 前端错误解析兼容）。语义等价，格式偏差。
+- **2026-10-10 起错误体已对齐标准字面格式**（401 场景 `error` 为字符串；403 保持对象格式，
+  标准未约束该场景且聊天链路有既有兼容）。真机容器实测：
+
+```
+$ curl -s -X POST :3600/v1/chat/completions -d '{"model":"deepseek-chat","messages":[]}'
+{"error":"unauthorized","message":"Missing credentials. Send `Authorization: Bearer <API key or JWT>`."}   HTTP 401
+
+$ curl -s -X POST :3600/v1/chat/completions -H 'Authorization: Bearer bad.token.here' ...
+{"error":"unauthorized","message":"Invalid gateway API key"}   HTTP 401
+```
+
 - 密钥不硬编码验证：
 
 ```
@@ -222,22 +231,33 @@ count = 3
 - token 优先取厂商 `usage`（流式注入 `stream_options.include_usage`），缺失时按字符估算，
   估算规则在 `gateway/src/usage.ts` 注释说明（CJK 1 字≈1 token，其余 4 字符≈1 token）——满足标准的注释要求。
 
-### AC-STAT-02 统计接口 — **DEVIATION**（路径不同，语义等价）
+### AC-STAT-02 统计接口 — **PASS**（2026-10-10 新增标准路径别名）
 
-- 标准：`GET /api/stats/usage?days=7`；实现：`GET /api/usage/daily?days=7`（另有 `/summary`、`/recent`）。
+- 标准：`GET /api/stats/usage?days=7`；原实现：`GET /api/usage/daily?days=7`（另有 `/summary`、`/recent`）。
+- **2026-10-10 新增 `/api/stats/usage` 别名路由**（handler 与 daily 同源，无行为差异）。
+  真机容器实测：
 
 ```
-$ curl -s -H "Authorization: Bearer <jwtA>" "http://127.0.0.1:3600/api/usage/daily?days=7"
-{"days":7,"items":[7 个按天对象（含补零）]}
-$ curl -s -H "Authorization: Bearer <jwtB>" …
-今日 calls=0   ← 用户隔离生效
+$ curl -s -H "Authorization: Bearer <jwt>" "http://127.0.0.1:3600/api/stats/usage?days=7"
+{"days":7,"items":[7 个按天对象（含补零，date/promptTokens/completionTokens/totalTokens/calls）]}
+
+$ curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:3600/api/stats/usage?days=7"   # 无 token
+401（鉴权生效）
 ```
 
 - 返回含 `date/prompt/completion/total/calls` 按天聚合，仅当前登录用户数据 ✅；换 token 数据不同 ✅。
 
-### AC-STAT-03 前端统计页面 — **DEVIATION**（路由形态不同）
+### AC-STAT-03 前端统计页面 — **PASS**（2026-10-10 新增 /stats 标准路由）
 
-- 标准：`/stats` 路由；实现：HashRouter 子页 `/#/usage`（侧边栏「用量」入口）。
+- 标准：`/stats` 路由；原实现：HashRouter 子页 `/#/usage`（侧边栏「用量」入口）。
+- **2026-10-10 新增 `/stats` Next.js 路由**（服务端 redirect 到 `/#usage`，登录守卫语义不变）。
+  真机容器 + 无头浏览器实测：
+
+```
+未登录访问 /stats        → 落在 /login（守卫拦截）✅
+登录后访问 /stats        → 稳定落在 /#usage，Recharts 图表渲染 ✅（docs/demo/05-stats-route.png）
+```
+
 - 内容完全达标：Recharts 折线（token）+ 柱状（调用次数）+ 总量卡片 + 7/30/90 天切换：
 
 ```
@@ -343,14 +363,13 @@ $ git log --format=%s | grep -vE "^(feat|fix|docs|refactor|chore)\("
 ## 7. 汇总
 
 ```
-PASS: 15 / 24
-DEVIATION: 6 / 24（GW-01、GW-03、USER-02、STAT-02、STAT-03、DOC-04 —— 功能/数量达标，字面偏差均已注明理由）
-FAIL: 1 / 24
-  - AC-DOC-04 数量已达标（20/20），仅余 4 个历史提交缺 scope（改写已推送历史风险大，注明保留）
-  - AC-INT-01/02/03 未到期不计 FAIL，单列 N/A（3 项）
-关键实测数据: 模型路由数=3（真实 key 验证 2 家）| 注册用户数=15 | 统计误差=0%（真实 usage 路径，估算路径已标记）| docker compose 真机验证=通过（2026-10-10）| commit 数=20
-已修复转 PASS: AC-USER-05（截图归档 docs/demo/，2026-10-10）| AC-DOC-01（真机 compose up 验证，2026-10-10）
+PASS: 18 / 24
+DEVIATION: 3 / 24（GW-01、USER-02、DOC-04 —— 均为注明理由的结构选型/历史遗留偏差）
+FAIL: 0 / 24
+  - AC-INT-01/02/03 未到期不计，单列 N/A（3 项）
+关键实测数据: 模型路由数=3（真实 key 验证 2 家）| 统计误差=0%（真实 usage 路径，估算路径已标记）| docker compose 真机验证=通过（2026-10-10）
+已修复转 PASS: AC-USER-05（截图归档）| AC-DOC-01（真机 compose）| AC-GW-03（错误体字面格式）| AC-STAT-02（标准路径别名）| AC-STAT-03（/stats 路由）——均为 2026-10-10
 ```
 
 > 判定口径说明：DEVIATION 计入"字面未达标"，不计 PASS。若按"功能语义达标"宽松口径，
-> PASS+DEVIATION = 20/24。
+> PASS+DEVIATION = 21/24（余 3 项 INT 未到期）。

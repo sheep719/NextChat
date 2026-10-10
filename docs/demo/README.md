@@ -8,3 +8,4 @@
 | 04-usage.png | 用量统计面板（Recharts 图表，数据来自网关 /api/usage） |
 
 > 截图由无头浏览器（Edge CDP）自动化生成，服务为 docker compose 真机容器（:3000 + :3600）。
+| 05-stats-route.png | /stats 标准路由 → 登录守卫 + 跳转用量面板（验收 STAT-03） |

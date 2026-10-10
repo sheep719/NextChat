@@ -223,12 +223,26 @@ const PUBLIC_PATHS = new Set([
 /** 自行处理鉴权的路径（签发令牌只认 API Key） */
 const SELF_AUTH_PATHS = new Set(["/v1/auth/token"]);
 
+/**
+ * 鉴权/授权失败响应。
+ * 401：{"error":"unauthorized","message":...} —— error 为字符串，对齐验收标准的
+ *   字面格式；message 字段供前端 toast（前端解析 json?.error?.message 回退 json?.message）。
+ * 403：保持 OpenAI 风格对象（error.message/type/code），标准未约束该场景，
+ *   且聊天转发链路对对象格式有既有兼容。
+ */
 function unauthorized(reply: any, err: AuthError): void {
   reply.header("www-authenticate", 'Bearer realm="nextchat-gateway"');
+  if (err.status === 401) {
+    reply.code(err.status).send({
+      error: "unauthorized",
+      message: err.message,
+    });
+    return;
+  }
   reply.code(err.status).send({
     error: {
       message: err.message,
-      type: err.status === 401 ? "invalid_request_error" : "permission_error",
+      type: "permission_error",
       code: err.code,
     },
   });
@@ -615,6 +629,21 @@ app.get("/api/sync/state/keys", async (req, reply) => {
  */
 app.get("/api/usage/daily", async (req, reply) => {
   if (!requireUser(req, reply, "GET /api/usage/daily")) return;
+  const q = (req.query ?? {}) as { days?: string };
+  const days = Number(q.days ?? 30);
+  const safeDays = Number.isFinite(days) ? Math.min(Math.max(days, 1), 365) : 30;
+  reply.send({
+    days: safeDays,
+    items: dailyUsage(req.auth!.userId!, safeDays),
+  });
+});
+
+/**
+ * GET /api/stats/usage?days=7 —— /api/usage/daily 的标准路径别名。
+ * 验收标准要求的字面路径；handler 完全同源，无行为差异。
+ */
+app.get("/api/stats/usage", async (req, reply) => {
+  if (!requireUser(req, reply, "GET /api/stats/usage")) return;
   const q = (req.query ?? {}) as { days?: string };
   const days = Number(q.days ?? 30);
   const safeDays = Number.isFinite(days) ? Math.min(Math.max(days, 1), 365) : 30;

@@ -343,7 +343,7 @@ $ git log --format=%s | grep -vE "^(feat|fix|docs|refactor|chore)\("
 ## 7. 汇总
 
 ```
-PASS: 14 / 24
+PASS: 15 / 24
 DEVIATION: 6 / 24（GW-01、GW-03、USER-02、STAT-02、STAT-03、DOC-04 —— 功能/数量达标，字面偏差均已注明理由）
 FAIL: 1 / 24
   - AC-DOC-04 数量已达标（20/20），仅余 4 个历史提交缺 scope（改写已推送历史风险大，注明保留）

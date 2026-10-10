@@ -183,7 +183,7 @@ $ curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:3600/api/conversations
 
 （带 token 的 CRUD 由 `sync-probe.mjs` 13/13 与 Postman 集合 `gateway/postman/` 覆盖。）
 
-### AC-USER-05 跨端可见 — **FAIL**（功能已验证，证据未归档）
+### AC-USER-05 跨端可见 — **PASS**（2026-10-10 截图归档）
 
 - E2E 已证明跨浏览器可见（CDP 两个隔离 BrowserContext 模拟两台设备）：
 
@@ -194,8 +194,15 @@ PASS  B: 换浏览器登录后看到设备 A 的历史对话   ← 核心演示�
 汇总: 6/6 通过
 ```
 
-- 但标准要求**录屏或截图存 `docs/demo/`**——目录尚未建立，截图/录屏待人工补充（浏览器可视化
-  操作超出无头 E2E 能力，需真机操作时录屏）。
+- **截图已归档 `docs/demo/`**（2026-10-10，真机 docker compose 容器 + Edge CDP 无头截图，
+  全流程 6/6 断言通过）：
+
+| 截图 | 内容 |
+| --- | --- |
+| `01-login.png` | 登录页（未登录访问主页自动跳转） |
+| `02-chat.png` | 设备 A 注册并发起对话 |
+| `03-cross-device.png` | 设备 B（全新浏览器上下文）登录同账号看到设备 A 的历史会话 |
+| `04-usage.png` | 用量统计面板（Recharts 图表） |
 
 ---
 
@@ -254,21 +261,43 @@ PASS  未登录访问被拦
 
 ## 5. 工程与文档交付（AC-DOC）
 
-### AC-DOC-01 Dockerfile 一键启动 — **FAIL**（文件齐备，未真机验证）
+### AC-DOC-01 Dockerfile 一键启动 — **PASS**（2026-10-10 真机验证通过）
 
 - `Dockerfile` + `docker-compose.yml` 已提供（单镜像双进程：web:3000 + gateway:3600）。
-- **本机未安装 Docker（`Get-Command docker` 为空），无法执行 `docker compose up -d`**——这是
-  本条 FAIL 的唯一原因。已做的替代验证：
-  - 本地 `yarn build` 产出 standalone，按容器目录布局起服务：`/login` 返回 200；
-  - `bash -n docker/start.sh` 语法通过 + 实跑验证控制流；12 项 Dockerfile 不变量断言全过。
+- **真机验证通过**（Windows 11 + Docker Desktop 4.94 / 引擎 29.8.2 / WSL2 后端）：
+
+```
+$ docker build -t nextchat-fork:0.2.0 .    # 构建成功
+$ docker compose up -d
+Container nextchat  Started
+
+$ curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:3000/login
+200                                            ← 验证命令 ①
+
+$ curl -s -w "\n%{http_code}" http://127.0.0.1:3600/health
+{"status":"ok"}
+200                                            ← 验证命令 ②
+
+$ curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:3600/api/conversations
+401（未带 token，鉴权生效）
+```
+
+- 真机构建过程中修复了三处仅在干净环境暴露的问题（已提交）：
+  1. `node:22-bookworm-slim` 已预装 yarn，`npm install -g yarn` 报 EEXIST → 改为存在即跳过；
+  2. `.dockerignore` 排除整个 `src-tauri` 导致 `app/config/build.ts` 编译期 import 失败 →
+     只排除 `src-tauri/target`；
+  3. 根 `tsconfig.json` 未排除 `gateway`，Next build 的 typecheck 扫到网关源码报
+     `Cannot find module 'better-sqlite3'` → exclude 补 `gateway`。
+- 网络受限环境构建参数（国内镜像源）：`--build-arg NPM_REGISTRY=https://registry.npmmirror.com
+  --build-arg REWRITE_LOCK_REGISTRY=1`（yarn 1.x frozen-lockfile 从 lock 的 resolved URL 下载，
+  需重写域名，详见 Dockerfile 注释）。
+- 早期替代验证仍有效：本地 standalone 布局 `/login` 200；`bash -n` + 12 项不变量断言。
 - 密钥泄漏检查：
 
 ```
 $ git grep -rE "sk-[A-Za-z0-9]{16,}"（git 跟踪文件，排除 lock/docs）
 命中文件数: 0
 ```
-
-- 待办：任何有 Docker 的机器跑 `docker compose up -d` 后复核两条验证命令。
 
 ### AC-DOC-02 README 改动清单 — **PASS**
 
@@ -312,15 +341,14 @@ $ git log --format=%s | grep -vE "^(feat|fix|docs|refactor|chore)\("
 ## 7. 汇总
 
 ```
-PASS: 12 / 24
+PASS: 14 / 24
 DEVIATION: 5 / 24（GW-01、GW-03、USER-02、STAT-02、STAT-03 —— 功能达标，字面偏差均已注明理由）
-FAIL: 4 / 24
-  - AC-USER-05：E2E 已验证跨端可见，但 docs/demo/ 截图/录屏未归档 → 人工录屏补
-  - AC-DOC-01：本机无 Docker，compose up 未真机验证 → 有 Docker 的机器复跑两条验证命令
-  - AC-DOC-04：提交数 9 < 20（P-024 毁掉 7 个早期提交 + 周期未满）；4 个 docs 提交缺 scope → 后续提交带 scope 补量
+FAIL: 2 / 24
+  - AC-DOC-04：提交数暂不足（P-024 毁掉 7 个早期提交 + 周期未满），持续补量中（本日起所有提交带 scope）
   - AC-INT-01/02/03 未到期不计 FAIL，单列 N/A（3 项）
-关键实测数据: 模型路由数=3（真实 key 验证 2 家）| 注册用户数=15 | 统计误差=0%（真实 usage 路径，估算路径已标记）| commit 数=9
+关键实测数据: 模型路由数=3（真实 key 验证 2 家）| 注册用户数=15 | 统计误差=0%（真实 usage 路径，估算路径已标记）| docker compose 真机验证=通过（2026-10-10）
+已修复转 PASS: AC-USER-05（截图归档 docs/demo/，2026-10-10）| AC-DOC-01（真机 compose up 验证，2026-10-10）
 ```
 
 > 判定口径说明：DEVIATION 计入"字面未达标"，不计 PASS。若按"功能语义达标"宽松口径，
-> PASS+DEVIATION = 17/24。
+> PASS+DEVIATION = 19/24。

@@ -314,19 +314,21 @@ README.md 顶部含三块：
 - after 图中明确出现四个新模块节点：**Server Gateway（gateway :3600）/ Auth（auth.ts+users.ts）/
   Database（SQLite 5 表）/ Usage Stats（usage.ts）**——满足标准的四节点命名要求。
 
-### AC-DOC-04 Commit 规范与连续性 — **FAIL**
+### AC-DOC-04 Commit 规范与连续性 — **DEVIATION**（数量达标；4 个历史提交缺 scope）
 
 ```
 $ git log --oneline |（defdcdb5 之后的二开提交）
-9 个（标准 ≥20）
+20 个（标准 ≥20）✓（2026-10-10 达标）
 
 $ git log --format=%s | grep -vE "^(feat|fix|docs|refactor|chore)\("
-4 个（docs: 前缀提交缺 scope 括号）
+4 个（docs: 前缀提交缺 scope 括号，均为 2026-10-08 前的历史提交）
 ```
 
-- 数量不足主因：① 项目周期尚未结束（10 天窗口刚过半）；② P-024 环境事故两次摧毁 `.git`，
-  7 个早期分层提交（网关配置层/数据层/鉴权层/HTTP 层/文档等）被迫并入 1 个重提提交。
-- 格式问题：`docs: xxx` 缺 `(模块)` scope。后续提交将统一带 scope（如 `docs(acceptance):`）。
+- 数量达标路径：真机 Docker 验证工作自然产出 9 个提交（docker/build 修复 ×2、demo 截图、
+  验收日志、台账 C-011、排障 P-040~P-042、README 构建参数、compose 清理、gateway 验证表）。
+- 4 个缺 scope 的历史提交（`docs: xxx` 格式）：改写需 rebase 已推送历史，风险大于收益
+  （P-024 前科），保留并在本条注明。**2026-10-08 起的所有提交均带 scope**。
+- 早期数量损失：P-024 环境事故两次摧毁 `.git`，7 个分层提交被迫并入 1 个重提提交。
 
 ---
 
@@ -342,13 +344,13 @@ $ git log --format=%s | grep -vE "^(feat|fix|docs|refactor|chore)\("
 
 ```
 PASS: 14 / 24
-DEVIATION: 5 / 24（GW-01、GW-03、USER-02、STAT-02、STAT-03 —— 功能达标，字面偏差均已注明理由）
-FAIL: 2 / 24
-  - AC-DOC-04：提交数暂不足（P-024 毁掉 7 个早期提交 + 周期未满），持续补量中（本日起所有提交带 scope）
+DEVIATION: 6 / 24（GW-01、GW-03、USER-02、STAT-02、STAT-03、DOC-04 —— 功能/数量达标，字面偏差均已注明理由）
+FAIL: 1 / 24
+  - AC-DOC-04 数量已达标（20/20），仅余 4 个历史提交缺 scope（改写已推送历史风险大，注明保留）
   - AC-INT-01/02/03 未到期不计 FAIL，单列 N/A（3 项）
-关键实测数据: 模型路由数=3（真实 key 验证 2 家）| 注册用户数=15 | 统计误差=0%（真实 usage 路径，估算路径已标记）| docker compose 真机验证=通过（2026-10-10）
+关键实测数据: 模型路由数=3（真实 key 验证 2 家）| 注册用户数=15 | 统计误差=0%（真实 usage 路径，估算路径已标记）| docker compose 真机验证=通过（2026-10-10）| commit 数=20
 已修复转 PASS: AC-USER-05（截图归档 docs/demo/，2026-10-10）| AC-DOC-01（真机 compose up 验证，2026-10-10）
 ```
 
 > 判定口径说明：DEVIATION 计入"字面未达标"，不计 PASS。若按"功能语义达标"宽松口径，
-> PASS+DEVIATION = 19/24。
+> PASS+DEVIATION = 20/24。

@@ -1,11 +1,11 @@
 /**
- * ═══════════════════════════════════════════════════════════
  * constant.ts — 全局常量中心
- * 管什么：厂商 API 地址 / 页面路由 / 服务端代理路由 / 存储键 /
- *         服务商与模型协议枚举 / 各厂商内置模型清单
- * 为什么集中管理：改一处生效全局；enum 拼错编译期就报错（类型安全）
- * 一句话：整个前端的"配置契约层"，UI / store / api 层都从这里取值
- * ═══════════════════════════════════════════════════════════
+ *
+ * 内容：厂商 API 地址、页面路由、服务端代理路由、localStorage 存储键、
+ *      服务商与模型协议枚举、各厂商内置模型清单。
+ *
+ * 集中管理的原因：修改一处即可全局生效；枚举拼写错误在编译期即可发现（类型安全）。
+ * UI、store、api 三层均从此文件取值，是前端的配置契约层。
  */
 export const OWNER = "ChatGPTNextWeb";
 export const REPO = "ChatGPT-Next-Web";
@@ -20,8 +20,8 @@ export const RUNTIME_CONFIG_DOM = "danger-runtime-config";
 
 // ── 各厂商 API 默认地址 ──────────────────────────────────────
 // 仅是兜底值：用户在设置里填了自定义 endpoint 时会被覆盖
-// 冷知识：BAIDU_OATUH_URL 是上游拼写错误（OATUH → OAUTH），
-// 因已被多处引用，改名属破坏性变更，上游一直没改
+// 注意：BAIDU_OATUH_URL 为上游命名拼写错误（OATUH → OAUTH），
+// 因已被多处引用，改名属破坏性变更，上游一直保留现状
 export const STABILITY_BASE_URL = "https://api.stability.ai";
 
 export const OPENAI_BASE_URL = "https://api.openai.com";
@@ -57,8 +57,8 @@ export const UPLOAD_URL = `${CACHE_URL_PREFIX}/upload`;
 
 /**
  * 前端页面路由（浏览器地址栏路径）
- * App Router 文件式路由：这里加一项 = app/ 下建同名目录
- * ★ Usage 是二次开发新增（改动 3）：网关用量统计面板页
+ * App Router 文件式路由：这里加一项即在 app/ 下建同名目录
+ * Usage 为二次开发新增：网关用量统计面板页
  */
 export enum Path {
   Home = "/",
@@ -73,7 +73,7 @@ export enum Path {
   Artifacts = "/artifacts",
   SearchChat = "/search-chat",
   McpMarket = "/mcp-market",
-  /** 自建网关的用量统计面板（改动 3） */
+  /** 自建网关的用量统计面板 */
   Usage = "/usage",
 }
 
@@ -116,8 +116,8 @@ export enum FileName {
 
 /**
  * localStorage 存储键（zustand persist 中间件按 key 持久化 store）
- * 原版对话数据就存在 Chat 这个键里 —— 纯本地，换浏览器即丢
- * ★ Auth 是二次开发新增：网关登录态（令牌/用户信息/网关地址）
+ * 原版对话数据存于 Chat 键，仅本地保存，更换浏览器即丢失
+ * Auth 为二次开发新增：网关登录态（令牌 / 用户信息 / 网关地址）
  */
 export enum StoreKey {
   Chat = "chat-next-web-store",
@@ -164,11 +164,13 @@ export const REQUEST_TIMEOUT_MS_FOR_THINKING = REQUEST_TIMEOUT_MS * 5;
 export const EXPORT_MESSAGE_CLASS_NAME = "export-markdown";
 
 /**
- * ServiceProvider vs ModelProvider 的区别
- * ServiceProvider = 服务商（你把 API Key/钱交给谁：OpenAI、Azure、DeepSeek…）
- * ModelProvider  = 模型协议族（请求长什么样：GPT 格式、Claude 格式…）
- * 两者 N:M 关系：Azure 复用 OpenAI 协议但服务商不同；
- * 接入新厂商时：这两个枚举 + platforms/ 适配器 + ApiPath 都要登记
+ * 两个维度需要区分清楚：
+ * ServiceProvider — 服务商，即 API Key 与计费归属方（OpenAI、Azure、DeepSeek…）
+ * ModelProvider   — 模型协议族，即请求报文格式（GPT 格式、Claude 格式…）
+ *
+ * 二者是多对多关系：一个服务商可提供多种协议，一种协议也可被多个服务商复用
+ * （例如 Azure 复用 GPT 协议，但服务商与 endpoint 不同）。
+ * 接入新厂商时，这两个枚举、platforms/ 适配器与 ApiPath 都需登记。
  */
 export enum ServiceProvider {
   OpenAI = "OpenAI",
@@ -357,9 +359,7 @@ Latex block: $$e=mc^2$$
 `;
 
 // MCP（Model Context Protocol）工具调用协议的提示词模板：
-// 教模型用 ```json:mcp:{clientId}``` 代码块格式发起工具调用
-// ★ 与项目 C 的衔接点：你自研项目工具层走 MCP 标准协议，
-//   这里能看到 NextChat 是用提示词约定模拟的早期 MCP 式调用
+// 以 ```json:mcp:{clientId}``` 代码块格式让模型发起工具调用
 export const MCP_TOOLS_TEMPLATE = `
 [clientId]
 {{ clientId }}
@@ -565,8 +565,8 @@ export const VISION_MODEL_REGEXES = [
 export const EXCLUDE_VISION_MODEL_REGEXES = [/claude-3-5-haiku-20241022/];
 
 // ── 内置模型清单（按厂商分组）+ 组装 ──────────────────────────
-// ★ 踩坑点：每接入新厂商要在两处登记（枚举 + DEFAULT_MODELS 组装段），
-//   漏一处设置页就不显示该厂商
+// 注意：接入新厂商需在枚举与 DEFAULT_MODELS 组装段两处登记，
+//       漏掉任一处，设置页都不会显示该厂商的模型
 const openaiModels = [
   // As of July 2024, gpt-4o-mini should be used in place of gpt-3.5-turbo,
   // as it is cheaper, more capable, multimodal, and just as fast. gpt-3.5-turbo is still available for use in the API.

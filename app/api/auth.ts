@@ -1,20 +1,17 @@
 /**
- * ═══════════════════════════════════════════════════════════
- * auth.ts — 服务端鉴权入口（Day 1 五文件的最后一个）
+ * auth.ts — 服务端鉴权入口
  *
- * 职责：每个 /api/xxx 代理路由在处理请求前都先调 auth(req, provider)
- * 做三件事：
- *   1. 解析 Authorization 头，区分"访问码"和"用户自己的 API Key"
- *   2. 两道闸门：访问码校验（needCode）+ 是否允许自带 key（hideUserApiKey）
- *   3. 用户没给 key 时，按 ModelProvider 注入服务端配置的系统 key
+ * 职责：各 /api/xxx 代理路由在处理请求前调用 auth(req, provider)，
+ * 完成三件事：
+ *   1. 解析 Authorization 头，区分访问码与用户自带的 API Key；
+ *   2. 两道校验：访问码校验（needCode）与是否允许自带 key（hideUserApiKey）；
+ *   3. 用户未提供 key 时，按 ModelProvider 注入服务端配置的系统 key。
  *
- * ★ 与前端 store/access.ts 的分工（Day 1 自测题 5 的完整答案）：
- *   前端 isAuthorized() 只决定 UI 显隐；真正的拦截在这里——
- *   伪造请求绕过前端，打到这里照样被 401。"前端拦体验，服务端拦攻击"
+ * 与前端 store/access.ts 的分工：前端的 isAuthorized() 仅决定 UI 显隐，
+ * 绕过前端伪造的请求会在此处被拦截并返回 401。
  *
- * ★ 返回值设计：不抛异常，返回 {error, msg} 让调用方决定响应格式——
- *   鉴权失败也是业务流的一部分，用返回值比异常更清晰
- * ═══════════════════════════════════════════════════════════
+ * 返回值设计：不抛异常，返回 {error, msg} 交由调用方决定响应格式，
+ * 鉴权失败属于正常业务分支，以返回值表达比异常更直观。
  */
 import { NextRequest } from "next/server";
 import { getServerSideConfig } from "../config/server";
@@ -22,11 +19,11 @@ import md5 from "spark-md5";
 import { ACCESS_CODE_PREFIX, ModelProvider } from "../constant";
 
 /**
- * 取真实客户端 IP：优先级 req.ip → x-real-ip → x-forwarded-for 第一个
- * 为什么取 forwardedFor 的第一个：代理链每过一层就追加一个 IP，
- * 链首才是真实客户端（链尾是离服务端最近的代理）
- * ★ 注意：x-forwarded-for 可伪造，直接打服务端的话这里拿到的就是假的——
- *   所以 IP 只能用于日志审计，不能用于安全决策
+ * 获取客户端 IP：依次取 req.ip、x-real-ip、x-forwarded-for 的第一项
+ * 取 forwarded-for 首项的原因：请求每经过一层代理会追加一个 IP，
+ * 首项为真实客户端，末项为离服务端最近的代理。
+ * 注意：x-forwarded-for 可被伪造，直连服务端时该值不可信，
+ * 因此 IP 仅用于日志审计，不参与鉴权决策。
  */
 function getIP(req: NextRequest) {
   let ip = req.ip ?? req.headers.get("x-real-ip");
@@ -56,12 +53,11 @@ function parseApiKey(bearToken: string) {
 }
 
 /**
- * 访问码校验核心：md5(用户输入) 与 server.ts 里预存的 md5 集合比对
- * —— 两边都是哈希值，明文访问码全程不落地（呼应 server.ts 的 ACCESS_CODES）
+ * 访问码校验：对用户输入做 md5 后，与 server.ts 预存的哈希集合比对，
+ * 两侧均为哈希值，明文访问码不落地（哈希集合见 server.ts 的 ACCESS_CODES）
  *
- * ★ 日志里有个细节问题：第 37 行把用户输入的访问码明文打进日志了
- *   （和 server.ts 的 getApiKey 泄漏是同类问题），发现这种"上游自己
- *   也没做好"的点，评审时值得单独说明
+ * 注意：这里的日志会把用户输入的访问码明文写入服务端日志，
+ * 与 server.ts 中 getApiKey 的密钥日志问题同类，存在泄漏风险
  */
 export function auth(req: NextRequest, modelProvider: ModelProvider) {
   const authToken = req.headers.get("Authorization") ?? "";
@@ -92,13 +88,12 @@ export function auth(req: NextRequest, modelProvider: ModelProvider) {
     };
   }
 
-  // 用户没带 key → 从服务端配置注入系统 key（"管理员买单"模式）
-  // ★ 与 constant.ts 的呼应：这里按 ModelProvider（协议族）分发，
-  //   而不是按 ServiceProvider（服务商）——注入的是协议对应的 key
-  //   特例两个：
-  //   - Iflytek 的 key 是 "apiKey:apiSecret" 拼接（它家鉴权要求）
-  //   - GPT 分支里用 URL 路径区分 Azure / OpenAI（复用协议，分流看路径）
-  // 手法：req.headers.set 直接改写请求头，下游代码无感知
+  // 用户未携带 key 时，从服务端配置注入系统 key（由管理员提供上游凭证）
+  // 按 ModelProvider（协议族）而非 ServiceProvider 分发，注入协议对应的 key。
+  // 两个特例：
+  //   - Iflytek 的 key 为 "apiKey:apiSecret" 拼接格式（其鉴权协议要求）
+  //   - GPT 分支依据 URL 路径区分 Azure 与 OpenAI（二者复用协议，按路径分流）
+  // 实现方式：req.headers.set 直接改写请求头，下游代码无感知
   if (!apiKey) {
     const serverConfig = getServerSideConfig();
 

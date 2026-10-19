@@ -1,5 +1,18 @@
-import {
-  GoogleSafetySettingsThreshold,
+/**
+ * ═══════════════════════════════════════════════════════════
+ * access.ts — 访问控制 + 厂商配置的 zustand store（前端层）
+ *
+ * 这个文件管两件事：
+ * 1. 用户自填的厂商配置（url / apiKey / accessCode）的本地持久化
+ * 2. 从 /api/config 拉取服务端下发的 8 个功能开关
+ *
+ * 设计要点：
+ *   这个文件里的所有校验（isValidXxx / isAuthorized）都只是
+ *   "前端拦截"——防君子不防小人，决定 UI 显隐和是否发起请求。
+ *   真正的鉴权在服务端 app/api/access.ts：前端拦不住伪造请求。
+ *   回答结构："两层各管各的——前端拦体验，服务端拦攻击"
+ * ═══════════════════════════════════════════════════════════
+ */
   ServiceProvider,
   StoreKey,
   ApiPath,
@@ -28,6 +41,10 @@ import { getModelProvider } from "../utils/model";
 
 let fetchState = 0; // 0 not fetch, 1 fetching, 2 done
 
+// ── 构建形态决定请求走向 ─────────────────────────────────────
+// isApp = true（桌面版 export 构建）：直连厂商官网 base URL（没有服务端可用）
+// isApp = false（Web 版）：走自家服务端代理路由 /api/xxx（ApiPath）
+// 这就是 ApiPath 存在的原因——Web 版请求必须过服务端一道，密钥才能留在后端
 const isApp = getClientConfig()?.buildMode === "export";
 
 const DEFAULT_OPENAI_URL = isApp ? OPENAI_BASE_URL : ApiPath.OpenAI;
@@ -62,6 +79,16 @@ const DEFAULT_SILICONFLOW_URL = isApp
 
 const DEFAULT_AI302_URL = isApp ? AI302_BASE_URL : ApiPath["302.AI"];
 
+/**
+ * 访问 store 的默认状态，三大块：
+ * 1. 用户输入：accessCode / useCustomConfig / provider
+ * 2. 16 家厂商的 url + key（用户在设置页自填，覆盖默认值）
+ * 3. 服务端下发的 8 个开关字段（见 api/config/route.ts 的 DANGER_CONFIG，
+ *    这里的初始值会在 fetch() 成功后被覆盖）
+ *
+ * 设计要点：用户填的 apiKey 存在 localStorage（持久化），
+ *   服务端下发的配置不持久化（每次启动重新拉）——两套来源、两种生命周期
+ */
 const DEFAULT_ACCESS_STATE = {
   accessCode: "",
   useCustomConfig: false,
@@ -153,6 +180,12 @@ const DEFAULT_ACCESS_STATE = {
   edgeTTSVoiceName: "zh-CN-YunxiNeural",
 };
 
+/**
+ * createPersistStore：zustand + persist 中间件封装（见 utils/store.ts）
+ * name = StoreKey.Access = "access-control" → localStorage 的键名
+ * 打开浏览器 DevTools → Application → Local Storage 能看到这个键，
+ * 里面就是你填的所有厂商 key（明文存本地——这也是已知风险，可主动讲）
+ */
 export const useAccessStore = createPersistStore(
   { ...DEFAULT_ACCESS_STATE },
 
@@ -226,6 +259,13 @@ export const useAccessStore = createPersistStore(
       return ensure(get(), ["siliconflowApiKey"]);
     },
 
+    /**
+     * ★ 本文件最核心方法：isAuthorized
+     * 判定逻辑 = 16 家厂商任一有 key || 未启用访问控制 || 有访问码
+     * 注意是"任一满足即可"（或关系）——只要有一个能用的渠道就放行
+     * ★ 关键认知：这只是前端拦截，真正的鉴权在 app/api/access.ts
+     *   前端拦的是"没配置就让你去设置页"，服务端拦的是"伪造请求直接打接口"
+     */
     isAuthorized() {
       this.fetch();
 
@@ -249,6 +289,15 @@ export const useAccessStore = createPersistStore(
         (this.enabledAccessControl() && ensure(get(), ["accessCode"]))
       );
     },
+    /**
+     * ★ fetch() 是 Day 1 链路问题的答案：前端从哪拿服务端配置
+     * 三个细节：
+     * 1. fetchState 防重入：0→1→2，只允许拉一次，之后所有调用直接走缓存
+     *    （这就是为什么 store 里每个 getter 都先调 this.fetch() —— 惰性初始化）
+     * 2. isApp 时直接跳过：桌面版没有服务端，拉不到配置
+     * 3. defaultModel 特殊处理：服务端下发的 defaultModel 要解析出厂商名，
+     *    反向写回 DEFAULT_CONFIG.modelConfig —— 说明默认模型的决策权在服务端
+     */
     fetch() {
       if (fetchState > 0 || getClientConfig()?.buildMode === "export") return;
       fetchState = 1;
@@ -285,6 +334,12 @@ export const useAccessStore = createPersistStore(
   {
     name: StoreKey.Access,
     version: 2,
+    /**
+     * localStorage schema 迁移：老版本字段名是 token，v2 改名 openaiApiKey
+     * ★ 这是"持久化存储的演进成本"的活例子：localStorage 里的数据
+     *   没法像数据库那样清表重来，只能靠 migrate 函数做字段映射
+     *   你的用户系统也会遇到同样问题（JWT payload 结构变更怎么办）
+     */
     migrate(persistedState, version) {
       if (version < 2) {
         const state = persistedState as {

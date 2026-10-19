@@ -1,24 +1,23 @@
 /**
- * ═══════════════════════════════════════════════════════════
  * server.ts — 服务端配置中心（仅 Node 环境）
- * 管什么：所有"不能进浏览器"的环境变量 —— 各厂商 API Key、访问码、
- *         功能开关（禁 GPT4 / 隐藏密钥输入框等）
- * 关键机制：本文件导出的内容只会出现在服务端（API Route / SSR），
- *         Next.js 会把 import 它的代码划入 server bundle，
- *         浏览器 bundle 里永远没有这些值 —— 密钥隔离的第一道墙
- * 姊妹文件：app/config/build.ts（构建期）| 通过 app/api/config/route.ts
- *         把"安全子集"（8 个非敏感字段）下发给前端
- * ═══════════════════════════════════════════════════════════
+ *
+ * 内容：所有不能进入浏览器的环境变量，包括各厂商 API Key、访问码、
+ *      功能开关（禁用 GPT4、隐藏密钥输入框等）。
+ *
+ * 隔离机制：Next.js 会将 import 本文件的代码划入 server bundle，
+ *          浏览器 bundle 中不含这些值；其中非敏感的子集由
+ *          app/api/config/route.ts 显式下发给前端。
+ * 相关文件：app/config/build.ts（构建期配置）。
  */
 import md5 from "spark-md5";
 import { DEFAULT_MODELS, DEFAULT_GA_ID } from "../constant";
 import { isGPT4Model } from "../utils/model";
 
 /**
- * ProcessEnv 类型声明 —— 给环境变量补上 TypeScript 类型
- * 没有这段的话 process.env.XXX 全是 string | undefined，
- * key 名拼错不报错；声明后写错编译期直接红。
- * 全部可选（?）：不设也能跑，服务端按"未配置该厂商"处理
+ * ProcessEnv 类型声明 —— 为环境变量补充 TypeScript 类型
+ * 未声明时 process.env.XXX 的类型均为 string | undefined，变量名写错不会报错；
+ * 声明后变量名拼写错误在编译期即可发现。
+ * 全部字段可选（?）：未配置时服务端按"该厂商未接入"处理，不影响启动。
  */
 declare global {
   namespace NodeJS {
@@ -119,12 +118,13 @@ declare global {
 }
 
 /**
- * 访问码集合：环境变量 CODE="code1,code2" 逗号分隔多个
- * ★ 安全考点：存的是 md5 哈希而不是明文 —— 校验时同样哈希后比对，
- *   明文访问码不驻留服务端内存；校验逻辑在 app/api/access.ts
- * ★ 弱点（可主动讲）：md5 无盐，理论上可彩虹表逆推，访问码强度
- *   依赖足够长随机；且无速率限制，可被暴力枚举 —— 你的 JWT 用户
- *   系统替换的正是这套机制，这就是两个项目的衔接故事
+ * 访问码集合：环境变量 CODE="code1,code2" 以逗号分隔多个
+ * 存储的是 md5 哈希而非明文，校验时对用户输入做同样处理再比对，
+ * 明文访问码不驻留服务端内存；校验逻辑见 app/api/auth.ts。
+ *
+ * 局限：md5 无盐，理论上存在彩虹表逆推风险，安全性依赖访问码本身的
+ * 随机强度；且当前实现未做速率限制，可被枚举。二次开发中以 JWT
+ * 用户体系替换了该机制。
  */
 const ACCESS_CODES = (function getAccessCodes(): Set<string> {
   const code = process.env.CODE;
@@ -140,12 +140,12 @@ const ACCESS_CODES = (function getAccessCodes(): Set<string> {
 })();
 
 /**
- * 多密钥轮询：KEY="sk-a,sk-b,sk-c" → 每次调用随机挑一个
- * 目的：多 key 分摊速率限制（rate limit），单个 key 打满不影响服务
- * ★ 高含金量谈资：console.log 把选中的 key 明文打进服务端日志！
- *   生产环境日志多人可见、还会被采集进日志平台，这是泄漏点。
- *   修复只需打成 `sk-...${apiKey.slice(-4)}` ——
- *   "我读源码时发现上游日志泄漏密钥"是绝佳的踩坑故事
+ * 多密钥轮询：KEY="sk-a,sk-b,sk-c" 时每次随机选取一个
+ * 目的：多个 key 分摊上游速率限制，单个 key 打满不影响整体服务
+ *
+ * 注意：下方 console.log 会将选中的 key 完整写入服务端日志。
+ * 生产环境日志通常多人可读并会被日志平台采集，属于密钥泄漏风险，
+ * 建议脱敏为 `sk-...${apiKey.slice(-4)}`。
  */
 function getApiKey(keys?: string) {
   const apiKeyEnvVar = keys ?? "";
@@ -164,17 +164,17 @@ function getApiKey(keys?: string) {
 }
 
 /**
- * 服务端配置总出口：每次调用收集一遍环境变量并加工
- * ⚠️ 是函数而非顶层常量 —— 保证热重载/多进程下读到的都是最新值
- * 守卫：process 不存在说明被 import 进了浏览器 bundle，直接抛错
- *       （运行时保险丝：宁可崩也不让密钥进浏览器）
+ * 服务端配置的统一出口：每次调用重新收集并加工环境变量
  *
- * 三个加工逻辑：
- * 1. isXxx 布尔旗标 —— "该厂商配没配 key"，前端用它决定设置页
- *    要不要显示该厂商入口（注意判定标准不统一：Azure 看 URL，
- *    其余看 API_KEY，因为 Azure 的部署信息在 URL 路径里）
- * 2. customModels 加工 —— DISABLE_GPT4=1 时给 GPT4 系模型名拼 "-"
- *    前缀（"-" = 从模型列表剔除，NextChat 约定的 DSL）
+ * 以函数而非顶层常量的形式导出，保证热重载与多进程场景下读到最新值。
+ * 守卫：若 process 不存在，说明本模块被误引入浏览器 bundle，直接抛错。
+ *
+ * 三处加工逻辑：
+ * 1. isXxx 布尔标记 —— 表示该厂商是否已配置密钥，前端据此决定设置页
+ *    是否展示对应入口（判定口径不统一：Azure 依据 AZURE_URL，
+ *    其余依据 API_KEY，因为 Azure 的部署信息位于 URL 路径中）
+ * 2. customModels 加工 —— DISABLE_GPT4=1 时为 GPT4 系模型名添加 "-"
+ *    前缀（"-" 表示从模型列表剔除，为 NextChat 约定的 DSL）
  * 3. allowedWebDavEndpoints —— 云同步端点白名单
  */
 export const getServerSideConfig = () => {

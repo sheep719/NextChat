@@ -1,17 +1,13 @@
 /**
- * ═══════════════════════════════════════════════════════════
- * access.ts — 访问控制 + 厂商配置的 zustand store（前端层）
+ * access.ts — 访问控制与厂商配置的 zustand store（前端层）
  *
- * 这个文件管两件事：
- * 1. 用户自填的厂商配置（url / apiKey / accessCode）的本地持久化
- * 2. 从 /api/config 拉取服务端下发的 8 个功能开关
+ * 职责：
+ * 1. 用户自填厂商配置（url / apiKey / accessCode）的本地持久化；
+ * 2. 从 /api/config 拉取服务端下发的 8 个功能开关。
  *
- * ★ 面试高频考点（Day 1 自测题 5 的答案）：
- *   这个文件里的所有校验（isValidXxx / isAuthorized）都只是
- *   "前端拦截"——防君子不防小人，决定 UI 显隐和是否发起请求。
- *   真正的鉴权在服务端 app/api/access.ts：前端拦不住伪造请求。
- *   回答结构："两层各管各的——前端拦体验，服务端拦攻击"
- * ═══════════════════════════════════════════════════════════
+ * 边界说明：本文件中的校验（isValidXxx / isAuthorized）属于前端拦截，
+ * 用于决定 UI 显隐与是否发起请求；真正的鉴权在服务端 app/api/auth.ts。
+ * 前端校验无法阻止伪造请求直接调用接口，两层各司其职。
  */
 import {
   GoogleSafetySettingsThreshold,
@@ -82,14 +78,14 @@ const DEFAULT_SILICONFLOW_URL = isApp
 const DEFAULT_AI302_URL = isApp ? AI302_BASE_URL : ApiPath["302.AI"];
 
 /**
- * 访问 store 的默认状态，三大块：
- * 1. 用户输入：accessCode / useCustomConfig / provider
- * 2. 16 家厂商的 url + key（用户在设置页自填，覆盖默认值）
- * 3. 服务端下发的 8 个开关字段（见 api/config/route.ts 的 DANGER_CONFIG，
- *    这里的初始值会在 fetch() 成功后被覆盖）
+ * 访问 store 的默认状态，分为三部分：
+ * 1. 用户输入：accessCode / useCustomConfig / provider；
+ * 2. 16 家厂商的 url 与 key（用户在设置页填写后覆盖默认值）；
+ * 3. 服务端下发的 8 个开关字段（见 api/config/route.ts 的 DANGER_CONFIG），
+ *    fetch() 成功后覆盖此处初始值。
  *
- * ★ 面试点：用户填的 apiKey 存在 localStorage（持久化），
- *   服务端下发的配置不持久化（每次启动重新拉）——两套来源、两种生命周期
+ * 两类配置的持久化策略不同：用户填写的 apiKey 持久化到 localStorage；
+ * 服务端下发的配置不持久化，每次启动重新拉取。
  */
 const DEFAULT_ACCESS_STATE = {
   accessCode: "",
@@ -262,11 +258,12 @@ export const useAccessStore = createPersistStore(
     },
 
     /**
-     * ★ 本文件最核心方法：isAuthorized
-     * 判定逻辑 = 16 家厂商任一有 key || 未启用访问控制 || 有访问码
-     * 注意是"任一满足即可"（或关系）——只要有一个能用的渠道就放行
-     * ★ 关键认知：这只是前端拦截，真正的鉴权在 app/api/access.ts
-     *   前端拦的是"没配置就让你去设置页"，服务端拦的是"伪造请求直接打接口"
+     * isAuthorized：判断当前是否具备可用配置
+     * 判定逻辑为或关系 —— 16 家厂商任一配置了 key，或未启用访问控制，
+     * 或已填写访问码，任一条件满足即放行。
+     *
+     * 该判断仅作用于前端（控制页面跳转与请求发起），
+     * 服务端鉴权见 app/api/auth.ts。
      */
     isAuthorized() {
       this.fetch();
@@ -292,13 +289,14 @@ export const useAccessStore = createPersistStore(
       );
     },
     /**
-     * ★ fetch() 是 Day 1 链路问题的答案：前端从哪拿服务端配置
-     * 三个细节：
-     * 1. fetchState 防重入：0→1→2，只允许拉一次，之后所有调用直接走缓存
-     *    （这就是为什么 store 里每个 getter 都先调 this.fetch() —— 惰性初始化）
-     * 2. isApp 时直接跳过：桌面版没有服务端，拉不到配置
-     * 3. defaultModel 特殊处理：服务端下发的 defaultModel 要解析出厂商名，
-     *    反向写回 DEFAULT_CONFIG.modelConfig —— 说明默认模型的决策权在服务端
+     * fetch：从前端获取服务端配置的入口
+     *
+     * 三个实现细节：
+     * 1. fetchState 防重入：状态 0 → 1 → 2，只发起一次请求，后续调用直接复用结果
+     *    （store 中各 getter 均先调用 this.fetch()，实现惰性初始化）；
+     * 2. isApp 时直接跳过：桌面版无服务端，无法获取配置；
+     * 3. defaultModel 需特殊处理：服务端下发的 defaultModel 要解析出厂商名，
+     *    再回写 DEFAULT_CONFIG.modelConfig，即默认模型由服务端决定。
      */
     fetch() {
       if (fetchState > 0 || getClientConfig()?.buildMode === "export") return;
@@ -337,10 +335,9 @@ export const useAccessStore = createPersistStore(
     name: StoreKey.Access,
     version: 2,
     /**
-     * localStorage schema 迁移：老版本字段名是 token，v2 改名 openaiApiKey
-     * ★ 这是"持久化存储的演进成本"的活例子：localStorage 里的数据
-     *   没法像数据库那样清表重来，只能靠 migrate 函数做字段映射
-     *   你的用户系统也会遇到同样问题（JWT payload 结构变更怎么办）
+     * localStorage schema 迁移：v1 的 token 字段在 v2 中更名为 openaiApiKey
+     * 持久化数据结构变更时无法直接重置，只能通过 migrate 做字段映射，
+     * 否则老用户升级后已保存的配置会丢失。
      */
     migrate(persistedState, version) {
       if (version < 2) {

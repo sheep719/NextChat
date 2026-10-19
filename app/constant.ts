@@ -1,3 +1,12 @@
+/**
+ * ═══════════════════════════════════════════════════════════
+ * constant.ts — 全局常量中心
+ * 管什么：厂商 API 地址 / 页面路由 / 服务端代理路由 / 存储键 /
+ *         服务商与模型协议枚举 / 各厂商内置模型清单
+ * 为什么集中管理：改一处生效全局；enum 拼错编译期就报错（类型安全）
+ * 一句话：整个前端的"配置契约层"，UI / store / api 层都从这里取值
+ * ═══════════════════════════════════════════════════════════
+ */
 export const OWNER = "ChatGPTNextWeb";
 export const REPO = "ChatGPT-Next-Web";
 export const REPO_URL = `https://github.com/${OWNER}/${REPO}`;
@@ -9,6 +18,10 @@ export const FETCH_COMMIT_URL = `https://api.github.com/repos/${OWNER}/${REPO}/c
 export const FETCH_TAG_URL = `https://api.github.com/repos/${OWNER}/${REPO}/tags?per_page=1`;
 export const RUNTIME_CONFIG_DOM = "danger-runtime-config";
 
+// ── 各厂商 API 默认地址 ──────────────────────────────────────
+// 仅是兜底值：用户在设置里填了自定义 endpoint 时会被覆盖
+// 冷知识：BAIDU_OATUH_URL 是上游拼写错误（OATUH → OAUTH），
+// 因已被多处引用，改名属破坏性变更，上游一直没改
 export const STABILITY_BASE_URL = "https://api.stability.ai";
 
 export const OPENAI_BASE_URL = "https://api.openai.com";
@@ -38,9 +51,15 @@ export const SILICONFLOW_BASE_URL = "https://api.siliconflow.cn";
 
 export const AI302_BASE_URL = "https://api.302.ai";
 
+// 文件/图片上传走服务端缓存接口（同代理思路：不直传三方）
 export const CACHE_URL_PREFIX = "/api/cache";
 export const UPLOAD_URL = `${CACHE_URL_PREFIX}/upload`;
 
+/**
+ * 前端页面路由（浏览器地址栏路径）
+ * App Router 文件式路由：这里加一项 = app/ 下建同名目录
+ * ★ Usage 是二次开发新增（改动 3）：网关用量统计面板页
+ */
 export enum Path {
   Home = "/",
   Chat = "/chat",
@@ -58,6 +77,11 @@ export enum Path {
   Usage = "/usage",
 }
 
+/**
+ * 服务端代理路由（app/api/ 下每个子目录对应一项）
+ * 为什么每个厂商单独一条：请求先到自家服务端再转发给厂商——
+ * ① 绕开浏览器 CORS 限制 ② API Key 只留在服务端，不暴露给前端
+ */
 export enum ApiPath {
   Cors = "",
   Azure = "/api/azure",
@@ -79,6 +103,7 @@ export enum ApiPath {
   "302.AI" = "/api/302ai",
 }
 
+// DOM 插槽 ID（给弹层 / 自定义模型输入框挂载用）
 export enum SlotID {
   AppBody = "app-body",
   CustomModel = "custom-model",
@@ -89,6 +114,11 @@ export enum FileName {
   Prompts = "prompts.json",
 }
 
+/**
+ * localStorage 存储键（zustand persist 中间件按 key 持久化 store）
+ * 原版对话数据就存在 Chat 这个键里 —— 纯本地，换浏览器即丢
+ * ★ Auth 是二次开发新增：网关登录态（令牌/用户信息/网关地址）
+ */
 export enum StoreKey {
   Chat = "chat-next-web-store",
   Plugin = "chat-next-web-plugin",
@@ -113,6 +143,9 @@ export const DEFAULT_GATEWAY_URL = "http://127.0.0.1:3600";
 /** 前端存放同步元信息的 state key（网关侧 cloud_state.state_key） */
 export const SYNC_STATE_KEY = "chat";
 
+// ── UI 尺寸 / 输入记忆 / 超时 ────────────────────────────────
+// ACCESS_CODE_PREFIX：原版轻量鉴权——访问码以 nk- 开头才放行
+// REQUEST_TIMEOUT_MS：普通请求 60s；思考型模型推理链长，放宽 5 倍
 export const DEFAULT_SIDEBAR_WIDTH = 300;
 export const MAX_SIDEBAR_WIDTH = 500;
 export const MIN_SIDEBAR_WIDTH = 230;
@@ -130,6 +163,13 @@ export const REQUEST_TIMEOUT_MS_FOR_THINKING = REQUEST_TIMEOUT_MS * 5;
 
 export const EXPORT_MESSAGE_CLASS_NAME = "export-markdown";
 
+/**
+ * ServiceProvider vs ModelProvider 的区别
+ * ServiceProvider = 服务商（你把 API Key/钱交给谁：OpenAI、Azure、DeepSeek…）
+ * ModelProvider  = 模型协议族（请求长什么样：GPT 格式、Claude 格式…）
+ * 两者 N:M 关系：Azure 复用 OpenAI 协议但服务商不同；
+ * 接入新厂商时：这两个枚举 + platforms/ 适配器 + ApiPath 都要登记
+ */
 export enum ServiceProvider {
   OpenAI = "OpenAI",
   Azure = "Azure",
@@ -188,6 +228,8 @@ export const Anthropic = {
   Vision: "2023-06-01",
 };
 
+// ── 各厂商路径模板 ───────────────────────────────────────────
+// OpenAI 协议族标准路径（GPT 系 + 兼容接口共用）
 export const OpenaiPath = {
   ChatPath: "v1/chat/completions",
   SpeechPath: "v1/audio/speech",
@@ -212,6 +254,7 @@ export const Google = {
     `v1beta/models/${modelName}:streamGenerateContent`,
 };
 
+// 百度：模型名和真实端点名不一致，需手工映射（ernie-4.0-8k → completions_pro）
 export const Baidu = {
   ExampleEndpoint: BAIDU_BASE_URL,
   ChatPath: (modelName: string) => {
@@ -237,6 +280,7 @@ export const ByteDance = {
   ChatPath: "api/v3/chat/completions",
 };
 
+// 阿里：VL/omni 多模态模型与普通文本模型走不同路径，按模型名分流
 export const Alibaba = {
   ExampleEndpoint: ALIBABA_BASE_URL,
   ChatPath: (modelName: string) => {
@@ -291,6 +335,9 @@ export const AI302 = {
   ListModelPath: "v1/models?llm=1",
 };
 
+// ── 提示词模板 ──────────────────────────────────────────────
+// 系统提示词模板：{{ServiceProvider}} 等占位符在运行时被替换，
+// 让模型知道自己是谁、知识截止到何时（截止日期查下方 KnowledgeCutOffDate）
 export const DEFAULT_INPUT_TEMPLATE = `{{input}}`; // input / time / model / lang
 // export const DEFAULT_SYSTEM_TEMPLATE = `
 // You are ChatGPT, a large language model trained by {{ServiceProvider}}.
@@ -309,6 +356,10 @@ Latex inline: \\(x^2\\)
 Latex block: $$e=mc^2$$
 `;
 
+// MCP（Model Context Protocol）工具调用协议的提示词模板：
+// 教模型用 ```json:mcp:{clientId}``` 代码块格式发起工具调用
+// ★ 与项目 C 的衔接点：你自研项目工具层走 MCP 标准协议，
+//   这里能看到 NextChat 是用提示词约定模拟的早期 MCP 式调用
 export const MCP_TOOLS_TEMPLATE = `
 [clientId]
 {{ clientId }}
@@ -488,6 +539,8 @@ export const DEFAULT_TTS_VOICES = [
   "shimmer",
 ];
 
+// ── 视觉能力识别 ────────────────────────────────────────────
+// 按模型名正则判断是否支持图片输入（发图时前端决定是否走视觉分支）
 export const VISION_MODEL_REGEXES = [
   /vision/,
   /gpt-4o/,
@@ -511,6 +564,9 @@ export const VISION_MODEL_REGEXES = [
 
 export const EXCLUDE_VISION_MODEL_REGEXES = [/claude-3-5-haiku-20241022/];
 
+// ── 内置模型清单（按厂商分组）+ 组装 ──────────────────────────
+// ★ 踩坑点：每接入新厂商要在两处登记（枚举 + DEFAULT_MODELS 组装段），
+//   漏一处设置页就不显示该厂商
 const openaiModels = [
   // As of July 2024, gpt-4o-mini should be used in place of gpt-3.5-turbo,
   // as it is cheaper, more capable, multimodal, and just as fast. gpt-3.5-turbo is still available for use in the API.
@@ -755,6 +811,9 @@ const ai302Models = [
   "gemini-2.5-pro",
 ];
 
+// DEFAULT_MODELS：把上面各组模型名 map 成统一结构
+// {name, available, sorted, provider:{id, providerName, providerType}}
+// sorted 用全局递增序号保证设置页排序稳定
 let seq = 1000; // 内置的模型序号生成器从1000开始
 export const DEFAULT_MODELS = [
   ...openaiModels.map((name) => ({
@@ -924,6 +983,7 @@ export const DEFAULT_MODELS = [
   })),
 ] as const;
 
+// 性能护栏：渲染窗口最多 3 页消息，防长对话卡死浏览器
 export const CHAT_PAGE_SIZE = 15;
 export const MAX_RENDER_MSG_COUNT = 45;
 

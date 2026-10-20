@@ -78,6 +78,53 @@ data: {"model":"qwen-plus","choices":[{"delta":{"content":"通义千"},...}]}
 data: [DONE]
 ```
 
+## 三·五、逐跳详解（文件 + 函数 + 做什么）
+
+> 完整图见 [01-flow.mmd](./01-flow.mmd)。下表每行对应图里的一条边，
+> 任何一跳答不出"文件+函数+职责"，即为该处的理解盲区。
+
+| # | 跳点 | 文件 → 函数 | 这一跳做了什么 |
+|---|---|---|---|
+| 1 | UI 事件 | `app/components/chat.tsx` → `doSubmit()` L1105 | 收集输入框内容与附图，调用 chatStore |
+| 2 | 状态组装 | `app/store/chat.ts` → `onUserInput()` L407 | 模板填充、写入 user/bot 两条消息（bot 占位 streaming=true）、`getMessagesWithMemory()` 合并上下文、注册 `AbortController` 进 `ChatControllerPool`（支撑停止按钮） |
+| 3 | 平台分发 | `app/client/api.ts` → `ClientApi` 构造器 | 按 `ModelProvider` switch，`this.llm` 实例化为 `ChatGPTApi` |
+| 4 | payload 构造 | `app/client/platforms/openai.ts` → `ChatGPTApi.chat()` L186 | `extractMessages` 提取消息、构造 OpenAI 格式 payload、`getHeaders()` L168 组装 `Authorization: Bearer <JWT>`、`path()` L85 决定 URL（浏览器走相对路径 `/api/openai`，桌面端直连） |
+| 5 | 发起请求 | `app/utils/chat.ts` → `streamWithThink()` L392 | 内部 `chatApi()` 经 `@fortaine/fetch-event-source` POST，SSE 帧回调进 `onmessage` |
+| 6 | 统一入口 | `app/api/[provider]/[...path]/route.ts` → `handle()` | 动态路由 `/api/openai/...` 命中 `ApiPath.OpenAI`，switch 分发到 openaiHandler |
+| 7 | 白名单+鉴权 | `app/api/openai.ts` → `handle()` L29 → `app/api/auth.ts` → `auth()` L66 | `ALLOWED_PATH` 校验子路径；`parseApiKey` 区分 JWT（无 nk- 前缀→用户 key 透传）；needCode 未启用→放行 |
+| 8 | URL 拼装 | `app/api/common.ts` → `requestOpenai()` L9 | `baseUrl = serverConfig.baseUrl(env BASE_URL) || OPENAI_BASE_URL`；`path` 去掉 `/api/openai/` 前缀；`fetchUrl = baseUrl + path`（实测 `http://127.0.0.1:3600/v1/chat/completions`）；10 分钟超时 + `duplex:"half"` 支持流式 body |
+| 9 | 网关鉴权 | `gateway/src/server.ts` → `/v1/chat/completions` handler | 校验 JWT：`typ=user`、`scope` 含 `chat.completions`（HS256，7 天有效） |
+| 10 | 模型路由 | `gateway/src/config.ts` → `resolveProvider()` L112 | `qwen-plus` 精确命中 `alibaba.models` 列表（另有 modelPrefixes 前缀匹配兜底） |
+| 11 | key 替换+转发 | `gateway/src/server.ts` L955 | 替换 `Authorization` 为百炼真实 key，加 `x-gateway-provider: alibaba` 头，fetch 上游 |
+| 12 | SSE 回流 | 上游 → 网关 → API Route → 浏览器 | 网关原样透传；`common.ts` L178 `new Response(res.body)` 不解析内容、删 `www-authenticate`（防浏览器弹认证框）、加 `X-Accel-Buffering: no`（禁 nginx 缓冲） |
+| 13 | 逐帧解析 | `app/utils/chat.ts` → `parseSSE()` L182 | 解析每帧 `delta.content` 拼正文；`reasoning_content` 进思考区；`[DONE]` 触发 `finish()`（若有 tool_calls 则二次请求循环） |
+| 14 | 逐字渲染 | `app/utils/chat.ts` → `animateResponseText()` L198 | `requestAnimationFrame` 每帧消费 ~60 字符——**渲染节奏与网络帧解耦**，网络快慢不影响打字机效果 |
+
+### 浏览器端与 curl 模拟的差异（重要）
+
+- **浏览器登录后**：`accessStore.useCustomConfig=true` 且 `openaiUrl=127.0.0.1:3600`，
+  `platforms/openai.ts` 的 `path()` 判断后**直连网关**，跳过第 6-8 跳（API Route）；
+- **curl 打 :3000**（本文方式）：走完整 6-8 跳，验证的是 API Route 全链路；
+- 两条路径在第 9 跳（网关）汇合，其后完全一致。
+
+### 自测代码说明（app/api/common.ts 临时日志）
+
+```ts
+const traceBody =
+  typeof fetchOptions.body === "string"
+    ? fetchOptions.body        // customModels 过滤段已读为字符串
+    : await req.text();        // 否则读一次原始流
+if (traceBody) fetchOptions.body = traceBody;  // 必须回填，否则 body 流已被消耗
+console.log("[LINK-TRACE] body >>>", traceBody);
+console.log("[LINK-TRACE] url  >>>", fetchUrl, "method:", req.method);
+```
+
+**第一版踩坑记录**（保留为面试素材）：最初写成 `await req.clone().text()`，
+返回 `TypeError: Response body object should not be disturbed or locked`。
+根因：`fetchOptions.body = req.body` 在函数前段已捕获原始流的引用，
+后调 `clone()` 会 tee 并锁定该流，fetch 再读旧引用即报错。
+**教训：流式请求体是一次性的，引用被提前捕获后不可 clone；正确做法是读一次成字符串再回填**——与上游 customModels 过滤段（L112-144）的处理模式一致。
+
 ## 四、发现并修复的问题（真实踩坑）
 
 ### 症状

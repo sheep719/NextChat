@@ -1,0 +1,51 @@
+%% NextChat 一次对话的完整链路（浏览器端路径，实测验证 2026-10-20）
+%% 每个节点标注 文件 + 函数，SSE 回流路径与请求路径分开画
+flowchart TB
+    subgraph FE["① 浏览器（React + zustand）"]
+        A["app/components/chat.tsx<br/>doSubmit()<br/>─────────────<br/>收集输入框内容<br/>attachImages 附图"]
+        B["app/store/chat.ts<br/>onUserInput() L407<br/>─────────────<br/>fillTemplateWith 模板填充<br/>先写 userMessage+占位botMessage<br/>getMessagesWithMemory 取上下文"]
+        C["app/client/api.ts<br/>ClientApi 构造器<br/>─────────────<br/>按 ModelProvider switch<br/>this.llm = ChatGPTApi"]
+        D["app/client/platforms/openai.ts<br/>ChatGPTApi.chat() L186<br/>─────────────<br/>extractMessages 提取有效消息<br/>构造 OpenAI 格式 payload<br/>path() L85 决定请求 URL"]
+        E["app/utils/chat.ts<br/>streamWithThink() L392<br/>─────────────<br/>内部调 chatApi()<br/>fetchEventSource 发起 POST"]
+    end
+
+    subgraph ROUTE["② NextChat API Route（Node.js）"]
+        F["app/api/[provider]/[...path]/route.ts<br/>handle()<br/>─────────────<br/>动态路由统一入口<br/>switch 按 provider 分发"]
+        G["app/api/openai.ts<br/>handle() L29<br/>─────────────<br/>ALLOWED_PATH 白名单校验<br/>调 auth() 鉴权"]
+        H["app/api/auth.ts<br/>auth() L66<br/>─────────────<br/>parseApiKey 区分 JWT/访问码<br/>needCode 校验<br/>无key时注入系统key"]
+        I["app/api/common.ts<br/>requestOpenai() L9<br/>─────────────<br/>baseUrl = env BASE_URL || 默认值<br/>path = 去掉 /api/openai/ 前缀<br/>fetchUrl = baseUrl + path<br/>10min 超时 + duplex:half"]
+    end
+
+    subgraph GW["③ 自建网关（Fastify :3600）"]
+        J["gateway/src/server.ts<br/>/v1/chat/completions handler<br/>─────────────<br/>校验 JWT (typ=user, scope)"]
+        K["gateway/src/config.ts<br/>resolveProvider() L112<br/>─────────────<br/>qwen-plus 精确匹配 alibaba.models<br/>返回 ProviderConfig"]
+        L["gateway/src/server.ts L955<br/>─────────────<br/>替换 Authorization 为百炼真实 key<br/>设置 x-gateway-provider 头"]
+    end
+
+    UP["④ 上游：阿里百炼 DashScope<br/>https://dashscope.aliyuncs.com/api/v1/chat/completions"]
+
+    subgraph SSE["⑤ SSE 回流（同一条 HTTP 连接反向流）"]
+        M["网关原样透传流<br/>不解析内容"]
+        N["NextChat API Route 原样透传<br/>common.ts L178<br/>new Response(res.body)<br/>删 www-authenticate<br/>加 X-Accel-Buffering:no"]
+        O["app/utils/chat.ts<br/>parseSSE() L182<br/>─────────────<br/>逐帧解析 data: {json}<br/>delta.content 拼接正文<br/>[DONE] 触发 finish()"]
+        P["app/utils/chat.ts<br/>animateResponseText() L198<br/>─────────────<br/>requestAnimationFrame 每帧 ~60 字<br/>打字机效果：渲染与网络解耦"]
+    end
+
+    A -->|"userInput + images"| B
+    B -->|"api.llm.chat(options)"| C
+    C -->|"this.llm 实例"| D
+    D -->|"chatPath + payload + headers"| E
+    E -->|"POST /api/openai/v1/chat/completions<br/>fetchEventSource"| F
+    F -->|"switch → openaiHandler"| G
+    G -->|"auth(req, ModelProvider.GPT)"| H
+    H -->|"{error:false} 放行"| I
+    I -->|"fetch(fetchUrl)"| J
+    J -->|"JWT 校验通过"| K
+    K -->|"provider = alibaba"| L
+    L -->|"注入真实 key 后 fetch"| UP
+
+    UP -.->|"SSE 流<br/>data: {...} x N + [DONE]"| M
+    M -.->|透传| N
+    N -.->|"onmessage(msg.data)"| O
+    O -.->|"onUpdate(responseText)"| P
+    P -.->|"setState 触发重渲染"| A

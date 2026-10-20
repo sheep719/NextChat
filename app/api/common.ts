@@ -144,6 +144,19 @@ export async function requestOpenai(req: NextRequest) {
   }
 
   try {
+    // 临时调试日志：抓取完整请求体与真实转发地址（用完删除）
+    // 请求体是一次性流：clone() 会锁定原始流，而 fetchOptions.body 在上文
+    // 已引用该流对象，fetch 时报 "disturbed or locked"。
+    // 正确做法：读一次成字符串，再回填给 fetchOptions.body（与上方
+    // customModels 过滤段相同的模式）。
+    const traceBody =
+      typeof fetchOptions.body === "string"
+        ? fetchOptions.body // customModels 过滤已读过并回填为字符串
+        : await req.text();
+    if (traceBody) fetchOptions.body = traceBody;
+    console.log("[LINK-TRACE] body >>>", traceBody);
+    console.log("[LINK-TRACE] url  >>>", fetchUrl, "method:", req.method);
+
     const res = await fetch(fetchUrl, fetchOptions);
 
     // Extract the OpenAI-Organization header from the response

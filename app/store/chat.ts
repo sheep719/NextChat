@@ -404,6 +404,19 @@ export const useChatStore = createPersistStore(
         get().summarizeSession(false, targetSession);
       },
 
+      /**
+       * onUserInput：用户发送消息的入口（由 chat.tsx 的 doSubmit 调用）
+       *
+       * 流程：
+       * 1. fillTemplateWith 按 mask 模板填充用户输入；
+       * 2. 有附图时构造多模态 content[]（text + image_url）；
+       * 3. 先写入 userMessage 与占位 botMessage（streaming: true），
+       *    UI 立即出现空气泡，后续帧驱动其内容更新；
+       * 4. getMessagesWithMemory 合并 mask 上下文、历史裁剪、压缩记忆；
+       * 5. getClientApi 按 providerName 取平台实现，发起 chat；
+       * 6. onUpdate 由流式帧驱动（打字机效果的终点），
+       *    onFinish 时落盘并触发会话摘要。
+       */
       async onUserInput(
         content: string,
         attachImages?: string[],

@@ -79,9 +79,20 @@ export interface DalleRequestPayload {
   style: DalleStyle;
 }
 
+/**
+ * ChatGPTApi：OpenAI 协议族的实现（GPT 系与所有 OpenAI 兼容接口共用）
+ * 接入自建网关时，本类的 openaiUrl 指向网关地址（登录后由 auth store 写入）。
+ */
 export class ChatGPTApi implements LLMApi {
   private disableListModels = true;
 
+  /**
+   * 决定请求发往哪里（URL 的组装规则）：
+   * 1. 用户开了"自定义接口"（useCustomConfig）→ 用用户填的 openaiUrl / azureUrl
+   *    （登录后指向自建网关，浏览器直连网关、跳过 API Route）；
+   * 2. 未自定义 → Web 端用相对路径 ApiPath.OpenAI（"/api/openai"，走同源
+   *    API Route 代理）；Tauri 桌面端（isApp）无服务端可代理，直连官方地址。
+   */
   path(path: string): string {
     const accessStore = useAccessStore.getState();
 
@@ -183,6 +194,13 @@ export class ChatGPTApi implements LLMApi {
     }
   }
 
+  /**
+   * 发起一次对话请求（链路第 4 跳）
+   * 配置合并优先级：全局 modelConfig ← 会话 mask.modelConfig ← 本次请求 options.config
+   * （后者最高，覆盖前两者）
+   * 流程：构造 payload → this.path() 决定 URL → getHeaders() 组装鉴权头 →
+   * streamWithThink() 发起流式请求（parseSSE 回调在 utils/chat.ts 实现）
+   */
   async chat(options: ChatOptions) {
     const modelConfig = {
       ...useAppConfig.getState().modelConfig,

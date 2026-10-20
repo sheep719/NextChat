@@ -172,6 +172,21 @@ export function removeImage(imageUrl: string) {
   });
 }
 
+/**
+ * 流式响应处理核心：SSE 帧的接收、解析与打字机渲染
+ *
+ * 数据流：fetchEventSource 收帧 → parseSSE 解析每帧 JSON（各平台传入
+ * 自己的解析实现，因为帧格式不同）→ remainText 缓冲 →
+ * animateResponseText 每帧消费 ~60 字符 → onUpdate 回调驱动 UI。
+ *
+ * 三个关键设计：
+ * 1. 渲染与网络解耦：网络帧全量进 remainText，渲染按 rAF 节奏消费，
+ *    网络忽快忽慢不影响打字机效果；
+ * 2. 工具调用循环：finish() 时若有积攒的 tool_calls，本地执行插件后
+ *    把结果追加进 messages 重新发起请求，直到无工具调用才真正结束；
+ * 3. AbortController 贯穿：UI 的"停止"按钮 → ChatControllerPool →
+ *    controller.abort() → 动画与请求同时终止。
+ */
 export function stream(
   chatPath: string,
   requestPayload: any,
@@ -297,6 +312,12 @@ export function stream(
 
   controller.signal.onabort = finish;
 
+  /**
+   * 实际发起 HTTP 请求的内层函数（工具调用循环时会重复进入）
+   * 经 @fortaine/fetch-event-source 发起 POST，其 onmessage 回调逐帧
+   * 调用 parseSSE 解析，[DONE] 或流关闭时触发 finish。
+   * 超时保护：REQUEST_TIMEOUT_MS（思考型模型放宽 5 倍，见 constant.ts）。
+   */
   function chatApi(
     chatPath: string,
     headers: any,
@@ -389,6 +410,11 @@ export function stream(
   chatApi(chatPath, headers, requestPayload, tools); // call fetchEventSource
 }
 
+/**
+ * stream 的思考模型增强版：额外处理 reasoning_content（思考过程）。
+ * 支持两种思考标记：字段级（delta.reasoning_content）与标签级（<think> 标签），
+ * 思考内容与正文分流渲染，前端折叠为"思考过程"块。
+ */
 export function streamWithThink(
   chatPath: string,
   requestPayload: any,
@@ -523,6 +549,12 @@ export function streamWithThink(
 
   controller.signal.onabort = finish;
 
+  /**
+   * 实际发起 HTTP 请求的内层函数（工具调用循环时会重复进入）
+   * 经 @fortaine/fetch-event-source 发起 POST，其 onmessage 回调逐帧
+   * 调用 parseSSE 解析，[DONE] 或流关闭时触发 finish。
+   * 超时保护：REQUEST_TIMEOUT_MS（思考型模型放宽 5 倍，见 constant.ts）。
+   */
   function chatApi(
     chatPath: string,
     headers: any,

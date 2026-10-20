@@ -17,6 +17,13 @@ import { handle as chatglmHandler } from "../../glm";
 import { handle as proxyHandler } from "../../proxy";
 import { handle as ai302Handler } from "../../302ai";
 
+/**
+ * 服务端代理的统一入口（链路第 6 跳）
+ * Next.js 动态路由：/api/<provider>/<path...> 全部打到这里，
+ * 按 provider 名 switch 分发到 app/api/<provider>.ts 的 handle。
+ * 好处：新增厂商只需加一个 case + 一个实现文件，入口不用动。
+ * 未匹配的 provider 走 proxy.ts 兜底。
+ */
 async function handle(
   req: NextRequest,
   { params }: { params: { provider: string; path: string[] } },

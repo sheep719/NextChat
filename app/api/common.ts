@@ -6,6 +6,23 @@ import { getModelProvider, isModelNotavailableInServer } from "../utils/model";
 
 const serverConfig = getServerSideConfig();
 
+/**
+ * requestOpenai：OpenAI 通道的转发实现（链路第 8 跳，fetchUrl 在这里拼出）
+ *
+ * URL 拼装规则：baseUrl 取环境变量 BASE_URL，未配置时回退
+ * OPENAI_BASE_URL（api.openai.com）——接入自建网关的部署必须在 .env
+ * 里配 BASE_URL 指向网关，否则请求会直发官方地址。
+ * path 为请求路径去掉 /api/openai/ 前缀（恢复成上游真实路径）。
+ *
+ * 请求体处理：customModels 配置时读一次 body 做模型白名单过滤，
+ * 并把字符串回填给 fetchOptions.body（流式 body 只能读一次，
+ * 必须回填否则后续 fetch 拿不到 body——下方调试日志依赖同一模式）。
+ *
+ * 流式支持：duplex:"half" 允许请求体边读边发；10 分钟超时兜底。
+ * 响应处理：new Response(res.body) 原样透传上游流（不解析内容），
+ * 删 www-authenticate（防浏览器弹认证框）、加 X-Accel-Buffering: no
+ * （禁用 nginx 缓冲，保证 SSE 帧实时到达）。
+ */
 export async function requestOpenai(req: NextRequest) {
   const controller = new AbortController();
 
@@ -144,11 +161,10 @@ export async function requestOpenai(req: NextRequest) {
   }
 
   try {
-    // 临时调试日志：抓取完整请求体与真实转发地址（用完删除）
-    // 请求体是一次性流：clone() 会锁定原始流，而 fetchOptions.body 在上文
-    // 已引用该流对象，fetch 时报 "disturbed or locked"。
-    // 正确做法：读一次成字符串，再回填给 fetchOptions.body（与上方
-    // customModels 过滤段相同的模式）。
+    // 链路观测日志：输出完整请求体与实际转发地址（REQUEST_BODY_URL 级别）
+    // 注意：请求体是一次性流，此处若用 req.clone() 会因流被锁定而使
+    // fetch 报 "disturbed or locked"。正确做法是读一次成字符串并回填
+    // fetchOptions.body —— 与上方 customModels 过滤段相同的处理模式。
     const traceBody =
       typeof fetchOptions.body === "string"
         ? fetchOptions.body // customModels 过滤已读过并回填为字符串

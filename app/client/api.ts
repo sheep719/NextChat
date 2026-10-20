@@ -133,6 +133,11 @@ interface ChatProvider {
   usage: () => void;
 }
 
+/**
+ * ClientApi：平台适配工厂
+ * 构造时按 ModelProvider（协议族）实例化对应的平台实现类，
+ * 上层（store/chat.ts）只面对统一的 this.llm 接口，不感知厂商差异。
+ */
 export class ClientApi {
   public llm: LLMApi;
 
@@ -241,6 +246,12 @@ export function validString(x: string): boolean {
   return x?.length > 0;
 }
 
+/**
+ * 组装请求头（Authorization 的双重语义在服务端 auth() 里消歧）
+ * 优先级：用户自填的厂商 key → 访问码（加 ACCESS_CODE_PREFIX 前缀）→ 空。
+ * 各厂商的差异化 header（如 Google 的 x-goog-api-key）在此函数内按
+ * providerName 分支处理。
+ */
 export function getHeaders(ignoreHeaders: boolean = false) {
   const accessStore = useAccessStore.getState();
   const chatStore = useChatStore.getState();
@@ -365,6 +376,10 @@ export function getHeaders(ignoreHeaders: boolean = false) {
   return headers;
 }
 
+/**
+ * ServiceProvider（服务商）→ ModelProvider（协议族）→ ClientApi 的两级映射。
+ * store 层只知道服务商名，协议族的选择收敛在此处。
+ */
 export function getClientApi(provider: ServiceProvider): ClientApi {
   switch (provider) {
     case ServiceProvider.Google:

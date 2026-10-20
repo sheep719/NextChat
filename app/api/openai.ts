@@ -26,6 +26,17 @@ function getModels(remoteModelRes: OpenAIListModelResponse) {
   return remoteModelRes;
 }
 
+/**
+ * OpenAI 通道的服务端处理（链路第 7 跳）
+ * 三层校验后透传：
+ * 1. OPTIONS 预检直接放行（CORS）；
+ * 2. ALLOWED_PATH 白名单——只代理 OpenaiPath 里登记过的子路径
+ *    （chat/completions、models 等），其余 403，防代理被滥用；
+ * 3. auth() 鉴权（见 api/auth.ts）；
+ * 4. requestOpenai()（见 api/common.ts）真正转发。
+ * 特例：ListModelPath 的响应会在这里被解析并按服务端配置过滤模型
+ * （如 DISABLE_GPT4），其余路径的响应流原样透传、不做任何解析。
+ */
 export async function handle(
   req: NextRequest,
   { params }: { params: { path: string[] } },

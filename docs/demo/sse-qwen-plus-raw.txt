@@ -1,0 +1,38 @@
+data: {"model":"qwen-plus","id":"chatcmpl-8d37cd3e-9628-9ef2-9a75-0a016e074aae","created":1792500387,"object":"chat.completion.chunk","usage":null,"choices":[{"logprobs":null,"index":0,"delta":{"content":"","role":"assistant"},"finish_reason":null}]}
+
+data: {"model":"qwen-plus","id":"chatcmpl-8d37cd3e-9628-9ef2-9a75-0a016e074aae","choices":[{"delta":{"content":"我是"},"index":0,"finish_reason":null,"logprobs":null}],"created":1792500387,"object":"chat.completion.chunk","usage":null}
+
+data: {"model":"qwen-plus","id":"chatcmpl-8d37cd3e-9628-9ef2-9a75-0a016e074aae","choices":[{"delta":{"content":"通义千"},"index":0,"finish_reason":null,"logprobs":null}],"created":1792500387,"object":"chat.completion.chunk","usage":null}
+
+data: {"model":"qwen-plus","id":"chatcmpl-8d37cd3e-9628-9ef2-9a75-0a016e074aae","choices":[{"delta":{"content":"问（Q"},"index":0,"finish_reason":null,"logprobs":null}],"created":1792500387,"object":"chat.completion.chunk","usage":null}
+
+data: {"model":"qwen-plus","id":"chatcmpl-8d37cd3e-9628-9ef2-9a75-0a016e074aae","choices":[{"delta":{"content":"wen），阿里巴巴"},"index":0,"finish_reason":null,"logprobs":null}],"created":1792500387,"object":"chat.completion.chunk","usage":null}
+
+data: {"model":"qwen-plus","id":"chatcmpl-8d37cd3e-9628-9ef2-9a75-0a016e074aae","choices":[{"delta":{"content":"集团旗下的超大规模语言模型"},"index":0,"finish_reason":null,"logprobs":null}],"created":1792500387,"object":"chat.completion.chunk","usage":null}
+
+data: {"model":"qwen-plus","id":"chatcmpl-8d37cd3e-9628-9ef2-9a75-0a016e074aae","choices":[{"delta":{"content":"，能够回答问题、创作"},"index":0,"finish_reason":null,"logprobs":null}],"created":1792500387,"object":"chat.completion.chunk","usage":null}
+
+data: {"model":"qwen-plus","id":"chatcmpl-8d37cd3e-9628-9ef2-9a75-0a016e074aae","choices":[{"delta":{"content":"文字（如写故事"},"index":0,"finish_reason":null,"logprobs":null}],"created":1792500387,"object":"chat.completion.chunk","usage":null}
+
+data: {"model":"qwen-plus","id":"chatcmpl-8d37cd3e-9628-9ef2-9a75-0a016e074aae","choices":[{"delta":{"content":"、公文、邮件"},"index":0,"finish_reason":null,"logprobs":null}],"created":1792500387,"object":"chat.completion.chunk","usage":null}
+
+data: {"model":"qwen-plus","id":"chatcmpl-8d37cd3e-9628-9ef2-9a75-0a016e074aae","choices":[{"delta":{"content":"、剧本等）、进行"},"index":0,"finish_reason":null,"logprobs":null}],"created":1792500387,"object":"chat.completion.chunk","usage":null}
+
+data: {"model":"qwen-plus","id":"chatcmpl-8d37cd3e-9628-9ef2-9a75-0a016e074aae","choices":[{"delta":{"content":"逻辑推理、编程，还能"},"index":0,"finish_reason":null,"logprobs":null}],"created":1792500387,"object":"chat.completion.chunk","usage":null}
+
+data: {"model":"qwen-plus","id":"chatcmpl-8d37cd3e-9628-9ef2-9a75-0a016e074aae","choices":[{"delta":{"content":"表达观点，支持"},"index":0,"finish_reason":null,"logprobs":null}],"created":1792500387,"object":"chat.completion.chunk","usage":null}
+
+data: {"model":"qwen-plus","id":"chatcmpl-8d37cd3e-9628-9ef2-9a75-0a016e074aae","choices":[{"delta":{"content":"多语言，并能"},"index":0,"finish_reason":null,"logprobs":null}],"created":1792500387,"object":"chat.completion.chunk","usage":null}
+
+data: {"model":"qwen-plus","id":"chatcmpl-8d37cd3e-9628-9ef2-9a75-0a016e074aae","choices":[{"delta":{"content":"根据上下文与"},"index":0,"finish_reason":null,"logprobs":null}],"created":1792500387,"object":"chat.completion.chunk","usage":null}
+
+data: {"model":"qwen-plus","id":"chatcmpl-8d37cd3e-9628-9ef2-9a75-0a016e074aae","choices":[{"delta":{"content":"用户进行多轮互动"},"index":0,"finish_reason":null,"logprobs":null}],"created":1792500387,"object":"chat.completion.chunk","usage":null}
+
+data: {"model":"qwen-plus","id":"chatcmpl-8d37cd3e-9628-9ef2-9a75-0a016e074aae","choices":[{"delta":{"content":"。"},"index":0,"finish_reason":null,"logprobs":null}],"created":1792500387,"object":"chat.completion.chunk","usage":null}
+
+data: {"model":"qwen-plus","id":"chatcmpl-8d37cd3e-9628-9ef2-9a75-0a016e074aae","choices":[{"delta":{"content":""},"index":0,"finish_reason":"stop","logprobs":null}],"created":1792500387,"object":"chat.completion.chunk","usage":null}
+
+data: {"model":"qwen-plus","id":"chatcmpl-8d37cd3e-9628-9ef2-9a75-0a016e074aae","choices":[],"created":1792500387,"object":"chat.completion.chunk","usage":{"total_tokens":73,"completion_tokens":61,"prompt_tokens":12,"prompt_tokens_details":{"cached_tokens":0}}}
+
+data: [DONE]
+

@@ -49,3 +49,7 @@ masks.json
 
 # mcp config
 app/mcp/mcp_config.json
+
+# local-only scratch/personal notes (never commit)
+/scratch/
+*.notes.md

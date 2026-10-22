@@ -63,7 +63,8 @@ curl -s http://127.0.0.1:3600/api/conversations
 
 ## 四、JWT 结构实测（token 解剖）
 
-签发给 A 的令牌解码：
+签发给 A 的令牌解码（jwt.io 解码截图见 [demo/jwt-anatomy.png](./demo/jwt-anatomy.png)，
+Signature 校验呈红色为预期现象——密钥仅存服务端，第三方工具无从验签）：
 
 | 段 | 内容 | 说明 |
 |---|---|---|

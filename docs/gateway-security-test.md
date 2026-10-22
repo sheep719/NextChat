@@ -2,7 +2,7 @@
 
 > 对象：自建网关（Fastify，:3600）的统一鉴权层 `gateway/src/auth.ts` 与数据访问层
 > `gateway/src/conversations.ts`。方法：黑盒注入四类攻击向量，观察响应与数据面行为。
-> 相关文档：[gateway-auth.md](./gateway-auth.md)（鉴权设计）、[01-flow.md](./01-flow.md)（请求链路）。
+> 相关文档：[gateway-auth.md](./gateway-auth.md)（鉴权设计）、[request-flow-log.md](./request-flow-log.md)（请求链路）。
 
 ## 一、测试环境与素材
 

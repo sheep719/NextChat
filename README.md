@@ -171,6 +171,7 @@ cd gateway && npm install && npm run dev   # 网关 :3600（先复制 .env.examp
 | `docs/streaming-fault-injection.md` | 流式透传故障注入实测（三组注入 + 管道泄漏修复） |
 | `docs/gateway-auth.md` | 网关鉴权设计与接入方式 |
 | `docs/gateway-security-test.md` | 网关鉴权安全实测（四类攻击向量与结果） |
+| `docs/sqlite-index-concurrency-test.md` | SQLite 索引收益与 WAL 并发实测（含 6 万倍免排序案例） |
 | `docs/gateway-user-auth.md` | 用户表/会话表设计与接口 |
 | `docs/frontend-cloud-sync.md` | 会话云端同步（整包快照方案） |
 | `docs/usage-stats.md` | 用量统计：token 来源、估算兜底、面板实现 |

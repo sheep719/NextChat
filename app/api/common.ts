@@ -7,7 +7,13 @@ import { getModelProvider, isModelNotavailableInServer } from "../utils/model";
 const serverConfig = getServerSideConfig();
 
 /**
- * requestOpenai：OpenAI 通道的转发实现（链路第 8 跳，fetchUrl 在这里拼出）
+ * 转发调试日志开关：DEBUG_PROXY=1 时输出请求体与目标地址。
+ * 默认关闭——请求体可能含完整对话内容，全量写日志有隐私与体积问题。
+ */
+const DEBUG_PROXY = process.env.DEBUG_PROXY === "1";
+
+/**
+ * requestOpenai：OpenAI 通道的转发实现（fetchUrl 在这里拼出）
  *
  * URL 拼装规则：baseUrl 取环境变量 BASE_URL，未配置时回退
  * OPENAI_BASE_URL（api.openai.com）——接入自建网关的部署必须在 .env
@@ -161,17 +167,19 @@ export async function requestOpenai(req: NextRequest) {
   }
 
   try {
-    // 链路观测日志：输出完整请求体与实际转发地址（REQUEST_BODY_URL 级别）
+    // 调试日志（DEBUG_PROXY=1 开启）：输出请求体与实际转发地址。
     // 注意：请求体是一次性流，此处若用 req.clone() 会因流被锁定而使
     // fetch 报 "disturbed or locked"。正确做法是读一次成字符串并回填
     // fetchOptions.body —— 与上方 customModels 过滤段相同的处理模式。
-    const traceBody =
-      typeof fetchOptions.body === "string"
-        ? fetchOptions.body // customModels 过滤已读过并回填为字符串
-        : await req.text();
-    if (traceBody) fetchOptions.body = traceBody;
-    console.log("[LINK-TRACE] body >>>", traceBody);
-    console.log("[LINK-TRACE] url  >>>", fetchUrl, "method:", req.method);
+    if (DEBUG_PROXY) {
+      const traceBody =
+        typeof fetchOptions.body === "string"
+          ? fetchOptions.body // customModels 过滤已读过并回填为字符串
+          : await req.text();
+      if (traceBody) fetchOptions.body = traceBody;
+      console.log("[PROXY-DEBUG] body >>>", traceBody);
+      console.log("[PROXY-DEBUG] url  >>>", fetchUrl, "method:", req.method);
+    }
 
     const res = await fetch(fetchUrl, fetchOptions);
 

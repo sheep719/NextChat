@@ -81,7 +81,7 @@ data: [DONE]
 ## 三·五、逐跳详解（文件 + 函数 + 做什么）
 
 > 完整图见 [request-flow-log.mmd](./request-flow-log.mmd)。下表每行对应图里的一条边，
-> 任何一跳答不出"文件+函数+职责"，即为该处的理解盲区。
+> 排障时按表定位到"文件+函数"即可插入日志或断点。
 
 | # | 跳点 | 文件 → 函数 | 这一跳做了什么 |
 |---|---|---|---|
@@ -103,21 +103,25 @@ data: [DONE]
 ### 浏览器端与 curl 模拟的差异（重要）
 
 - **浏览器登录后**：`accessStore.useCustomConfig=true` 且 `openaiUrl=127.0.0.1:3600`，
-  `platforms/openai.ts` 的 `path()` 判断后**直连网关**，跳过第 6-8 跳（API Route）；
-- **curl 打 :3000**（本文方式）：走完整 6-8 跳，验证的是 API Route 全链路；
-- 两条路径在第 9 跳（网关）汇合，其后完全一致。
+  `platforms/openai.ts` 的 `path()` 判断后**直连网关**，跳过 API Route 三跳（上表 6-8）；
+- **curl 打 :3000**（本文方式）：走完整 API Route 代理路径，验证的是服务端全链路；
+- 两条路径在网关（上表第 9 段）汇合，其后完全一致。
 
-### 自测代码说明（app/api/common.ts 临时日志）
+### 调试日志说明（app/api/common.ts，`DEBUG_PROXY=1` 开启）
 
 ```ts
-const traceBody =
-  typeof fetchOptions.body === "string"
-    ? fetchOptions.body        // customModels 过滤段已读为字符串
-    : await req.text();        // 否则读一次原始流
-if (traceBody) fetchOptions.body = traceBody;  // 必须回填，否则 body 流已被消耗
-console.log("[LINK-TRACE] body >>>", traceBody);
-console.log("[LINK-TRACE] url  >>>", fetchUrl, "method:", req.method);
+if (DEBUG_PROXY) {
+  const traceBody =
+    typeof fetchOptions.body === "string"
+      ? fetchOptions.body        // customModels 过滤段已读为字符串
+      : await req.text();        // 否则读一次原始流
+  if (traceBody) fetchOptions.body = traceBody;  // 必须回填，否则 body 流已被消耗
+  console.log("[PROXY-DEBUG] body >>>", traceBody);
+  console.log("[PROXY-DEBUG] url  >>>", fetchUrl, "method:", req.method);
+}
 ```
+
+默认关闭的原因：请求体含完整对话内容，全量写日志有隐私与体积问题。
 
 **第一版踩坑记录**（真实事故留档）：最初写成 `await req.clone().text()`，
 返回 `TypeError: Response body object should not be disturbed or locked`。

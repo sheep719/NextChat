@@ -182,7 +182,7 @@ const DEFAULT_ACCESS_STATE = {
  * createPersistStore：zustand + persist 中间件封装（见 utils/store.ts）
  * name = StoreKey.Access = "access-control" → localStorage 的键名
  * 打开浏览器 DevTools → Application → Local Storage 能看到这个键，
- * 里面就是你填的所有厂商 key（明文存本地——这也是已知风险，可主动讲）
+ * 里面就是用户填的所有厂商 key（明文存本地——已知风险，见安全评估）
  */
 export const useAccessStore = createPersistStore(
   { ...DEFAULT_ACCESS_STATE },

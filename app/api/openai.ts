@@ -27,7 +27,7 @@ function getModels(remoteModelRes: OpenAIListModelResponse) {
 }
 
 /**
- * OpenAI 通道的服务端处理（链路第 7 跳）
+ * OpenAI 通道的服务端处理
  * 三层校验后透传：
  * 1. OPTIONS 预检直接放行（CORS）；
  * 2. ALLOWED_PATH 白名单——只代理 OpenaiPath 里登记过的子路径

@@ -41,7 +41,9 @@ const server = http.createServer(async (req, res) => {
       // 是否按 OpenAI 规范在最后一个分片里带 usage（用于验证网关的真实值抓取路径）
       const withUsage = parsed.stream_options?.include_usage === true;
       let i = 0;
+      let stop = false;
       const sendChunk = () => {
+        if (stop) return;
         if (i >= chunks.length) {
           clearInterval(timer);
           if (withUsage) {
@@ -84,10 +86,24 @@ const server = http.createServer(async (req, res) => {
             }) +
             "\n\n",
         );
+        console.log(`[mock upstream] 第 ${i + 1}/${chunks.length} 帧已发出: ${chunks[i]}`);
         i += 1;
       };
+      // 连接关闭感知：下游断开时停发（模拟真实上游对断开的反应）
+      res.on("close", () => {
+        console.log(
+          `[mock upstream] 连接关闭（已发 ${i}/${chunks.length} 帧），停止发送`,
+        );
+        stop = true;
+        clearTimer();
+      });
       // 首帧延迟 firstDelay 后启动，之后按 interval 节奏发送
       let timer = setInterval(sendChunk, interval);
+      // 统一的停止句柄清理（interval 与 timeout 句柄都清）
+      const clearTimer = () => {
+        clearInterval(timer);
+        clearTimeout(timer);
+      };
       if (firstDelay > 0) {
         clearInterval(timer);
         timer = setTimeout(() => {

@@ -991,11 +991,23 @@ app.post("/v1/chat/completions", async (req, reply) => {
       const source = Readable.fromWeb(upstream.body as any);
       source.pipe(tap).pipe(reply.raw);
 
-      // 客户端提前断开时也要记账（否则长对话一条都记不上）
-      const onEarlyClose = () => finish(null, "");
+      // 客户端提前断开时：
+      // 1) 记账（否则长对话一条都记不上）
+      // 2) 销毁上游管道——不销毁的话 pipe 链会继续消费上游流直到
+      //    自然结束，上游 token 在客户端已离开后仍在消耗。
+      //    source.destroy() 终止 Readable 并关闭底层连接（undici
+      //    感知到消费者销毁后会断开上游 socket）；controller.abort()
+      //    兜底，保证 fetch 侧也终止。
+      const onEarlyClose = () => {
+        finish(null, "");
+        clearTimeout(timer);
+        source.destroy();
+        controller.abort();
+      };
       reply.raw.on("close", onEarlyClose);
       tap.on("end", () => {
         reply.raw.off("close", onEarlyClose);
+        clearTimeout(timer);
       });
     } else {
       // 非流式：JSON 整体转发（响应头同步透传）

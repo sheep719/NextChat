@@ -281,6 +281,20 @@ function toClaimList(v: unknown): string[] | null {
   return null;
 }
 
+/**
+ * 校验 JWT 并还原调用方身份。
+ *
+ * 校验顺序（先廉价后昂贵，且顺序本身是安全设计）：
+ *   1. 结构校验（三段式）——格式不对直接拒绝，不做任何密码学运算；
+ *   2. 算法白名单——必须在验签【前】判定，防止 alg:none / 算法混淆攻击
+ *      （攻击者改 header 声明其他算法骗验证方用错误方式验签）；
+ *   3. 验签（HMAC + timingSafeEqual 定长比较，防时序侧信道）；
+ *   4. payload 解析与时效校验（exp / nbf 各留 CLOCK_SKEW 容忍时钟偏差）；
+ *   5. 签发方/受众校验（iss / aud 配置了才比对）。
+ *
+ * 注意：payload 明文可读（base64url 只是编码不是加密），敏感信息不能放 claim；
+ * 但明文可读≠可伪造，任何改动都会导致第 3 步签名失配 → 401。
+ */
 export function verifyJwt(token: string): AuthIdentity {
   const parts = token.split(".");
   if (parts.length !== 3) {

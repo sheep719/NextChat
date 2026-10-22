@@ -34,10 +34,14 @@ const server = http.createServer(async (req, res) => {
         Connection: "keep-alive",
       });
       const chunks = ["你", "好", "，", "这", "是", "第", "二", "家", "上", "游"];
+      // 可注入的延迟：FIRST_FRAME_DELAY_MS 推迟首帧（模拟慢上游），
+      // CHUNK_INTERVAL_MS 控制后续帧间隔（默认 1000ms）
+      const firstDelay = Number(process.env.FIRST_FRAME_DELAY_MS || 0);
+      const interval = Number(process.env.CHUNK_INTERVAL_MS || 1000);
       // 是否按 OpenAI 规范在最后一个分片里带 usage（用于验证网关的真实值抓取路径）
       const withUsage = parsed.stream_options?.include_usage === true;
       let i = 0;
-      const timer = setInterval(() => {
+      const sendChunk = () => {
         if (i >= chunks.length) {
           clearInterval(timer);
           if (withUsage) {
@@ -81,7 +85,15 @@ const server = http.createServer(async (req, res) => {
             "\n\n",
         );
         i += 1;
-      }, 40);
+      };
+      // 首帧延迟 firstDelay 后启动，之后按 interval 节奏发送
+      let timer = setInterval(sendChunk, interval);
+      if (firstDelay > 0) {
+        clearInterval(timer);
+        timer = setTimeout(() => {
+          timer = setInterval(sendChunk, interval);
+        }, firstDelay);
+      }
       return;
     }
 

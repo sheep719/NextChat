@@ -49,3 +49,11 @@ masks.json
 
 # mcp config
 app/mcp/mcp_config.json
+
+# local-only study/scratch artifacts (never commit)
+/scratch/
+*.notes.md
+反拷打*
+*面试*
+*题库*
+*手册*

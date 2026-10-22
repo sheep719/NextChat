@@ -119,7 +119,7 @@ console.log("[LINK-TRACE] body >>>", traceBody);
 console.log("[LINK-TRACE] url  >>>", fetchUrl, "method:", req.method);
 ```
 
-**第一版踩坑记录**（保留为面试素材）：最初写成 `await req.clone().text()`，
+**第一版踩坑记录**（真实事故留档）：最初写成 `await req.clone().text()`，
 返回 `TypeError: Response body object should not be disturbed or locked`。
 根因：`fetchOptions.body = req.body` 在函数前段已捕获原始流的引用，
 后调 `clone()` 会 tee 并锁定该流，fetch 再读旧引用即报错。

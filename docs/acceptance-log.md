@@ -352,9 +352,9 @@ $ git log --format=%s | grep -vE "^(feat|fix|docs|refactor|chore)\("
 
 ---
 
-## 6. 面试可用性检查（AC-INT，第 4 周使用）— **N/A ×3**
+## 6. 问答文档完备性检查（AC-INT，第 4 周使用）— **N/A ×3**
 
-`docs/interview-qa.md` 未创建（验收标准注明第 4 周使用，未到期）。素材已就绪：
+`docs/faq-qa.md` 未创建（验收标准注明第 4 周使用，未到期）。素材已就绪：
 三问的答案散见于 `docs/secondary-dev-rules.md`（C-001~C-010 决策记录）与
 `docs/troubleshooting.md`（P-001~P-039 坑与解法），届时汇总成文即可。
 

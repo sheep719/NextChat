@@ -39,7 +39,7 @@
 **设计动机**：本项目主力模型是 qwen/deepseek，选 CJK 1:1 公式是按目标 tokenizer
 校准的结果；`estimated=1` 标记保证估算值与真实值在面板上可区分、不混入计费口径。
 
-## 三、Docker 镜像体检（静态分析，引擎未运行）
+## 三、Docker 镜像体检（实测，2026-10-24）
 
 多阶段构建结构（4 阶段：web-deps → web-build / gw-deps → runner）：
 
@@ -50,13 +50,24 @@
 | gw-deps | 网关依赖（better-sqlite3 预编译） | Node 22 基线（ABI 约束，注释已说明） |
 | runner | 运行时层 | 只 COPY --from 产物；DB_PATH 指向 /gw/data 数据卷 |
 
-**密钥隔离验证**：
+**镜像体积（`docker images`）：526MB**。`docker history` 逐层拆解：
 
-1. `git log -p --all` 全历史扫描 `sk-*` / `DASHSCOPE_API_KEY` / `JWT_SECRET` 实值——**零泄漏**
-   （仅文档中的 URL 与占位说明）；
+| 层 | 体积 | 说明 |
+|---|---|---|
+| Debian 基座 + Node 22 + yarn | ≈247MB | node:22-bookworm-slim 基线（85.3 + 154 + 7.3MB），不可压缩成本 |
+| `COPY /gw/node_modules` | 80.9MB | 网关依赖。编译链（python3/make/g++）只存在于 gw-deps 构建阶段，runner 不含——多阶段构建的收益 |
+| `COPY .next/standalone` | 57.1MB | 前端产物（含 Next 服务运行时） |
+| `COPY .next/server` + `.next/static` + `public` | ≈20MB | 前端静态资源 |
+| `COPY gateway/src` + 配置 + start.sh | <0.2MB | 源码与入口脚本 |
+
+**运行时资源（`docker stats --no-stream`）**：内存 85.2MiB / 13.5GiB，CPU 0.18%，healthcheck healthy。
+
+**密钥隔离验证（四关）**：
+
+1. `git log -p --all` 全历史扫描 `sk-*` / `DASHSCOPE_API_KEY` / `JWT_SECRET` 实值——**零泄漏**（仅文档中的 URL 与占位说明）；
 2. `.env` / `gateway/.env` 从未被 git 跟踪（`git log --all -- .env` 为空）；
-3. Dockerfile 无任何 `ENV` 写入密钥：运行时密钥全部经 `docker run -e` /
-   compose 注入，镜像层里不落密钥（`docker history` 可复核，引擎恢复后补跑）。
+3. Dockerfile 无任何 `ENV` 写入密钥：运行时密钥全部经 `docker run -e` / compose 注入；
+4. **`docker history --no-trunc` 逐层实查 + `docker run --rm <image> env` 实跑**：镜像内环境变量仅 6 个非敏感项（NODE_VERSION / YARN_VERSION / NODE_ENV / NEXT_TELEMETRY_DISABLED / DATA_DIR / DB_PATH），任何层无密钥值。
 
 **ARG vs ENV**（构建参数进镜像的风险点）：本 Dockerfile 的 ARG
 （NPM_REGISTRY / NEXT_PUBLIC_GATEWAY_URL）均非敏感值；
@@ -67,10 +78,15 @@ NEXT_PUBLIC_GATEWAY_URL 会被内联进客户端 bundle——这本来就是公�
 
 1. 记账双路径（真实 include_usage 优先 + 估算兜底带标记）已在线上 13 条记录中验证混合工作；
 2. 估算公式按国产模型 tokenizer 校准（中文 0% 误差），显著优于上游通用公式（高估 50%）；
-3. 镜像构建无密钥落层，全 git 历史无泄漏；NEXT_PUBLIC_ 前缀的公开性边界已确认。
+3. 镜像构建无密钥落层（history 逐层 + env 实跑双重复核），全 git 历史无泄漏；
+   镜像 526MB（基座 247MB + 网关依赖 81MB + 前端产物 77MB），
+   运行时内存 85MB——单容器双进程的体积代价主要在 Node 基座，属固定成本。
 
 ## 附：复现方式
 
 - 估算对照：node 直接跑两公式（样本见本文档表格）；
 - 线上记录：`sqlite3 gateway.db 'SELECT model,prompt_tokens,completion_tokens,estimated,status FROM usage_records'`；
-- 泄漏扫描：`git log -p --all | grep -iE "sk-|apikey|JWT_SECRET=" | grep -v 占位词`。
+- 泄漏扫描：`git log -p --all | grep -iE "sk-|apikey|JWT_SECRET=" | grep -v 占位词`；
+- 镜像体检：`docker history <image> --no-trunc`（逐层体积与命令）、
+  `docker run --rm <image> env`（镜像内环境变量实查）、
+  `docker stats --no-stream`（运行时内存）。

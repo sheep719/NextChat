@@ -10,7 +10,7 @@
 - `journal_mode = wal`（`db.ts` 启动即设，一直生效）
 - 二级索引 4 个：`idx_conversations_user (user_id, updated_at DESC)`、
   `idx_messages_conv (conversation_id, seq)`、`idx_usage_user_time`、`idx_usage_time`
-- 真实查询计划抽查：会话列表查询走 `SEARCH ... USING INDEX`；
+- 真实查询计划核验：会话列表查询走 `SEARCH ... USING INDEX`；
   **usage 按 model 聚合是 `SCAN` + `USE TEMP B-TREE`**（全表扫描，见第四节）
 - 观察到 `gateway.db-wal` 达 1.2MB 未 checkpoint（主库仅 4KB）——WAL 合并时机见第五节
 

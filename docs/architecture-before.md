@@ -59,7 +59,7 @@
     `POST https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation`，
     SSE 流式返回，每帧 `data:` 后是 JSON（`output.choices[].message.content` 为增量正文）。
 
-## 本文引用的源码路径（供 AC-ENV-03 抽查）
+## 本文引用的源码路径（供 AC-ENV-03 核验）
 
 | # | 路径 | 关键函数 |
 |---|---|---|

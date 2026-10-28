@@ -34,7 +34,7 @@ PASS  A: 本设备看到刚发的消息  | ["云同步验证pm79"]
 `docs/architecture-before.md` 已建（2026-10-09），按标准格式：有序列表
 `UI 组件 → store → client/api.ts → 模型厂商接口`，每跳标注文件与函数。
 
-抽查路径（随机 3 个，全部存在）：
+路径核验（随机抽 3 个，全部存在）：
 
 ```
 $ node -e "['app/components/chat.tsx','app/client/platforms/alibaba.ts','app/api/auth.ts'].forEach(p=>console.log(p, require('fs').existsSync(p)))"

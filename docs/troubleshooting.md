@@ -48,7 +48,7 @@
 - **现象**：`node .../corepack/dist/corepack.js enable yarn` 创建了 shim，但直接 `yarn --version` 报脚本无法执行。
 - **根因**：corepack 在 Windows 生成的是 `yarn` / `yarn.cmd` / `yarn.ps1` 三个 shim；bash shim 不是真正的 shell，
   无法执行 shebang 脚本；`.ps1` 又被执行策略挡住。
-- **解决**：绕开 shim，**直接调用** `corepack 生成的 yarn.CMD 实体`。
+- **解决**：绕开 shim，**直接调用** `yarn.cmd` 实体文件（corepack 生成目录内的 `.CMD`，如 `node\...\corepack\...\yarn.CMD` 的绝对路径调用）。
 - **防范**：Windows 下优先显式调用 `.CMD`，依赖 PATH 查找不可靠。
 
 ---
